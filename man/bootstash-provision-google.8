@@ -1,0 +1,58 @@
+.TH BOOTSTASH-PROVISION-GOOGLE 8 "September 2026" "bootstash" "System Administration"
+.SH NAME
+bootstash-provision-google \- write Google OIDC client keys into /etc/bootstash/oidc-google
+.SH SYNOPSIS
+.B bootstash provision-google
+[\fB\-config\fR \fIpath\fR]
+[\fB\-secrets\fR \fIpath\fR]
+[\fB\-origin\fR \fIurl\fR]
+[\fB\-project\fR \fIid\fR]
+.SH DESCRIPTION
+Prints the exact OIDC redirect URI
+.RB ( $PUBLIC_ORIGIN/oidc/callback )
+and Google Auth Platform console URLs, then writes the Client ID and
+Client secret you paste to
+.IR /etc/bootstash/oidc-google
+(mode
+.BR 0640 ,
+.BR root:bootstash ).
+It does not edit
+.IR /etc/default/bootstash .
+.PP
+It does
+.B not
+create the Google OAuth web client.
+.B gcloud
+has no supported command for that client type. Consent / branding is
+once per GCP project. One web client per
+.BR PUBLIC_ORIGIN .
+If
+.B gcloud
+is on
+.BR PATH ,
+the current project id is used for console links.
+It does not create Unix users.
+.SH OPTIONS
+.TP
+.BI \-config " path"
+Operator config to read
+.B PUBLIC_ORIGIN
+from. Default:
+.IR /etc/default/bootstash .
+.TP
+.BI \-secrets " path"
+File to write. Default:
+.IR /etc/bootstash/oidc-google .
+.TP
+.BI \-origin " url"
+.B PUBLIC_ORIGIN
+if it is not already in
+.IR /etc/default/bootstash .
+.TP
+.BI \-project " id"
+GCP project id for console URLs when
+.B gcloud
+has none.
+.SH SEE ALSO
+.BR bootstash (8),
+.BR bootstash (5)

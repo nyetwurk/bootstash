@@ -1,0 +1,148 @@
+.TH BOOTSTASH 5 "September 2026" "bootstash" "File Formats"
+.SH NAME
+bootstash \- operator config, packaged defaults, and OIDC secrets
+.SH SYNOPSIS
+.I /etc/default/bootstash
+.br
+.I /usr/lib/bootstash/defaults.conf
+.br
+.I /etc/bootstash/oidc-google
+.SH DESCRIPTION
+bootstashd reads packaged defaults, then
+.IR /etc/default/bootstash ,
+then
+.IR /etc/bootstash/oidc-google .
+Later source wins for scalars. If the operator file mentions
+.B BIND
+at all, its
+.B BIND=
+lines replace the packaged listen list (several
+.B BIND=
+lines in
+.I /etc/default/bootstash
+append to each other). The secrets file cannot change
+.BR BIND .
+.PP
+.I /etc/default/bootstash
+is a conffile and ships empty (one frozen comment line). Add only keys
+that differ from the packaged defaults. Do not copy the full defaults
+into
+.IR /etc/default/bootstash .
+.B bootstash provision-google
+does not write this file.
+.PP
+.I /etc/bootstash/oidc-google
+is written by
+.B bootstash provision-google
+(Google client id and secret). It is not a conffile. Do not put
+.BR BIND ,
+.BR PUBLIC_ORIGIN ,
+or other operator keys there.
+.PP
+Format:
+.B KEY=value
+lines,
+.B #
+comments, no shell expansion. Mode
+.BR 0640 ,
+owner
+.BR root:bootstash
+so the daemon user can read them. The daemon reads these files itself;
+do not use systemd
+.BR EnvironmentFile= .
+.SH KEYS
+.TP
+.B PUBLIC_ORIGIN
+Browser-facing URL (scheme and host, no trailing slash). Required.
+Used for OIDC redirects, cookies, and CSRF Origin checks.
+Write this in
+.IR /etc/default/bootstash .
+.TP
+.B BIND
+Repeatable listen spec:
+.IR where:port
+with optional
+.B /ipv4
+or
+.BR /ipv6 .
+.I where
+may be
+.BR * ,
+an address, a CIDR, an interface name, or
+.BR unix://path .
+Port 0 is rejected. Unix sockets are HTTP only.
+A CIDR is expanded to
+.B local
+addresses in that prefix, not a client allowlist.
+Loopback is skipped unless the prefix is loopback.
+If no address matches at start, the daemon refuses to run; on reload
+it keeps the previous listeners.
+A missing interface is retried at start and kept on reload.
+.TP
+.B TLS_CERT / TLS_KEY
+If both are set, TCP binds use HTTPS with these files (for example Let’s
+Encrypt
+.I fullchain.pem
+and
+.IR privkey.pem ).
+Not an ACME client.
+.TP
+.B DATA
+Data volume. Default
+.IR /var/lib/bootstash .
+.TP
+.B OIDC_GOOGLE_CLIENT_ID / OIDC_GOOGLE_CLIENT_SECRET
+Google web OAuth client. Client ID is required to start.
+.B bootstash provision-google
+writes these into
+.IR /etc/bootstash/oidc-google .
+They may also appear in
+.I /etc/default/bootstash
+(secrets file wins if both set).
+.TP
+.B OIDC_CRYPTO
+Optional HMAC key (at least 32 bytes, or hex). If unset, a key is created
+under
+.IR $DATA/state/crypto.key .
+.TP
+.B PAM_SERVICE
+PAM service name. Default
+.BR bootstashd
+(file
+.IR /etc/pam.d/bootstashd ).
+The
+.B bootstash
+CLI does not use PAM.
+.TP
+.B MAX_UPLOAD
+Upload size cap in bytes (suffixes such as
+.B 32MiB
+are accepted). Default 32MiB.
+.TP
+.B SHARED_WRITABLE
+If
+.BR 1 ,
+allow HTTP writes into
+.IR shared/ .
+Default off.
+.TP
+.B UNIX_GROUP
+Group for Unix sockets. Default
+.BR bootstash .
+.TP
+.B ADMIN_USERS
+Comma- or space-separated PAM usernames treated as operators (the
+admin seam). Default empty: nobody. SIGHUP re-reads the list. v1
+grants no extra HTTP powers; later admin routes will use this list.
+Not a Unix group and not an application user table.
+.SH FILES
+.TP
+.I /etc/bootstash
+Directory for helper-written secrets
+.RB ( 0750
+.BR root:bootstash ).
+Created by tmpfiles or the helper. Do not use systemd
+.BR ConfigurationDirectory= .
+.SH SEE ALSO
+.BR bootstashd (8),
+.BR bootstash (8)

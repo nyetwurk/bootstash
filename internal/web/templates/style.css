@@ -1,0 +1,35 @@
+/* Copyright (C) 2026 Nye Liu
+ * SPDX-License-Identifier: GPL-3.0-or-later */
+
+:root {
+  color-scheme: light dark;
+  --bg: #fff;
+  --fg: #111;
+  --muted: #ddd;
+  --link: #0645ad;
+  --err: #a40000;
+  --input-bg: #fff;
+  --input-fg: #111;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121212;
+    --fg: #eee;
+    --muted: #444;
+    --link: #8ab4f8;
+    --err: #ff8a80;
+    --input-bg: #1e1e1e;
+    --input-fg: #eee;
+  }
+}
+html { color-scheme: light dark; }
+body { background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; font-size: 18px; margin: 1rem; line-height: 1.4; }
+a { color: var(--link); }
+a, button, input, label { font-size: 1rem; }
+a, button, input[type=submit], input[type=file] { min-height: 44px; display: inline-flex; align-items: center; }
+button, input[type=submit] { background: var(--input-bg); color: var(--input-fg); }
+table { width: 100%; border-collapse: collapse; }
+td, th { text-align: left; padding: 0.5rem 0.25rem; border-bottom: 1px solid var(--muted); }
+input[type=text], input[type=password] { width: 100%; max-width: 24rem; min-height: 44px; box-sizing: border-box; background: var(--input-bg); color: var(--input-fg); }
+.err { color: var(--err); }
+nav { margin-bottom: 1rem; }

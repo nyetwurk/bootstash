@@ -1,0 +1,34 @@
+Source: bootstash
+Section: net
+Priority: optional
+Maintainer: nyet <nyet@nyet.org>
+Build-Depends:
+ debhelper-compat (= 13),
+ golang-go (>= 2:1.27~),
+ libpam0g-dev
+Standards-Version: 4.7.2
+Homepage: https://github.com/nyet/bootstash
+Vcs-Git: https://github.com/nyet/bootstash.git
+Vcs-Browser: https://github.com/nyet/bootstash
+Rules-Requires-Root: no
+
+Package: bootstash
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ adduser,
+ libpam0g,
+ ca-certificates
+Recommends:
+ ssl-cert
+Suggests:
+ nginx | apache2,
+ certbot,
+ openvpn | wireguard,
+ google-cloud-cli
+Description: convenience cubby for bootstrap files
+ bootstash is a small HTTP daemon that lets existing PAM users browse,
+ download, and upload bootstrap files after Google sign-in. Shared tree
+ is read-only over HTTP by default; each linked user has a private tree.
+ It is a convenience store, not a high-assurance secrets engine.

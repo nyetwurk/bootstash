@@ -1,0 +1,10 @@
+/bin/
+/debian/changelog
+/debian/.debhelper/
+/debian/bootstash/
+/debian/files
+/debian/*.substvars
+/debian/*.debhelper.log
+/plans/
+.cursor/
+.*.swp
