@@ -1,0 +1,71 @@
+# Tag push: package and publish. *-rc* → prerelease; otherwise full release.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: taiki-e/install-action@git-cliff
+      - name: Install package build deps
+        run: sudo apt-get update && sudo apt-get install -y libpam0g-dev build-essential dpkg-dev debhelper lintian
+      - name: make test
+        run: make test
+      - name: make packages
+        run: make packages
+        env:
+          DEB_BUILD_OPTIONS: nocheck
+      - name: make lintian
+        run: make lintian
+      - name: Tree after package build
+        if: failure()
+        run: |
+          git status --short
+          git diff
+          git ls-files --others --exclude-standard
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bootstash-${{ github.ref_name }}
+          path: packages/*
+
+  release:
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+      - uses: taiki-e/install-action@git-cliff
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: bootstash-${{ github.ref_name }}
+          path: artifacts
+      - name: Release notes
+        run: sh scripts/release-notes.sh github > release-notes.md
+        env:
+          GITHUB_REPO: ${{ github.repository }}
+      - name: Create release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          prerelease: ${{ contains(github.ref_name, '-rc') }}
+          files: |
+            artifacts/*.deb
+            artifacts/*.buildinfo

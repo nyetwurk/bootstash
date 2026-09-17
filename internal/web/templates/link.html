@@ -1,0 +1,11 @@
+{{/* Copyright (C) 2026 Nye Liu. SPDX-License-Identifier: GPL-3.0-or-later */}}
+{{define "link"}}
+<h1>Link your Linux account</h1>
+<p>This Google sign-in is not linked yet. Use the same username and password you use for ssh.</p>
+{{if .Error}}<p class="err">{{.Error}}</p>{{end}}
+<form method="post" action="/link">
+<label>Username<br><input type="text" name="username" autocomplete="username" required{{if .Hint}} value="{{.Hint}}"{{end}}></label><br>
+<label>Password<br><input type="password" name="password" autocomplete="current-password" required></label><br>
+<button type="submit">Link account</button>
+</form>
+{{end}}

@@ -1,0 +1,19 @@
+[Unit]
+Description=bootstash bootstrap file cubby
+Documentation=man:bootstashd(8)
+Documentation=man:bootstash(5)
+After=network.target
+
+[Service]
+Type=notify
+User=bootstash
+SupplementaryGroups=ssl-cert
+ExecStart=/usr/sbin/bootstashd
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+StateDirectory=bootstash
+RuntimeDirectory=bootstash
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_RAW CAP_CHOWN
+
+[Install]
+WantedBy=multi-user.target

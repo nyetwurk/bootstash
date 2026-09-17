@@ -1,0 +1,2 @@
+# CLI is built CGO_ENABLED=0 (no PAM).
+bootstash: statically-linked-binary [usr/sbin/bootstash]

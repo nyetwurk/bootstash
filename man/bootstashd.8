@@ -1,0 +1,105 @@
+.TH BOOTSTASHD 8 "September 2026" "bootstash" "System Administration"
+.SH NAME
+bootstashd \- convenience cubby for bootstrap files
+.SH SYNOPSIS
+.B bootstashd
+[\fB\-V\fR]
+[\fB\-\-version\fR]
+[\fB\-t\fR]
+[\fB\-defaults\fR \fIpath\fR]
+[\fB\-config\fR \fIpath\fR]
+[\fB\-secrets\fR \fIpath\fR]
+.SH DESCRIPTION
+.B bootstashd
+is the bootstash daemon. After Google OpenID Connect and a one-time PAM
+link to an existing Unix account, it serves a shared tree (read) and the
+linked user’s tree (read/write) over HTTP or HTTPS.
+.PP
+HTTP
+.B DELETE
+removes a file or empty directory in a writable tree (not rename).
+.PP
+It is a convenience store, not a high-assurance secrets engine. Isolation
+is a path jail plus POSIX permissions; the process runs as one service
+user
+.BR bootstash .
+.PP
+The daemon refuses to start until
+.B PUBLIC_ORIGIN
+is set (operator config) and
+.B OIDC_GOOGLE_CLIENT_ID
+is set (usually
+.IR /etc/bootstash/oidc-google ).
+.SH OPTIONS
+.TP
+.BR \-V ", " \-\-version
+Print the version from
+.B git describe
+and exit.
+.TP
+.BR \-t ", " \-\-check\-config
+Parse packaged defaults, operator config, secrets file, BIND specs, and
+TLS files (if set). Print a short summary and exit. Does not listen.
+.TP
+.BI \-defaults " path"
+Packaged defaults file. Default:
+.IR /usr/lib/bootstash/defaults.conf .
+.TP
+.BI \-config " path"
+Operator config. Default:
+.IR /etc/default/bootstash .
+.TP
+.BI \-secrets " path"
+OIDC client secrets. Default:
+.IR /etc/bootstash/oidc-google .
+.SH SIGNALS
+.TP
+.B SIGHUP
+Re-read packaged defaults, operator config, and the secrets file
+(keep the last good config on parse failure),
+reload TLS certificate and key from disk (keep the previous cert on
+failure), and re-sync CIDR/interface listeners without dropping unrelated
+listeners. systemd
+.B reload
+sends this.
+.TP
+.B SIGTERM / SIGINT
+Graceful shutdown. Under systemd the process sends
+.B STOPPING=1
+then closes listeners.
+.PP
+The packaged unit is
+.B Type=notify
+.RB ( READY=1
+after config is loaded, including while waiting for a missing interface).
+.SH FILES
+.TP
+.I /usr/lib/bootstash/defaults.conf
+Packaged defaults (not a conffile).
+.TP
+.I /etc/default/bootstash
+Operator config; empty on install. See
+.BR bootstash (5).
+.TP
+.I /etc/bootstash/oidc-google
+Google OIDC client id/secret. Written by
+.B bootstash provision-google .
+Not a conffile.
+.TP
+.I /var/lib/bootstash
+Default data volume:
+.IR shared/ ,
+.IR users/<pam_user>/
+.RB ( 2770
+.IR alice:bootstash ),
+.IR state/
+.RB ( 0700 ,
+not served).
+Removing the package does not delete
+.I shared/
+or
+.IR users/ ;
+those are operator files.
+.SH SEE ALSO
+.BR bootstash (8),
+.BR bootstash (5)

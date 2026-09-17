@@ -1,0 +1,43 @@
+#!/usr/bin/make -f
+# Copyright (C) 2026 Nye Liu
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+export DH_VERBOSE = 1
+export GO111MODULE = on
+export GOFLAGS = -trimpath
+export CGO_ENABLED = 1
+export GOTOOLCHAIN = local
+
+GIT_VERSION ?= $(shell git describe --tags --abbrev=4 --dirty --always 2>/dev/null || echo unknown)
+VERSION_LDFLAGS = -X github.com/nyet/bootstash/internal/version.Version=$(GIT_VERSION)
+
+%:
+	dh $@ --with installsysusers
+
+override_dh_auto_build:
+	mkdir -p bin
+	CGO_ENABLED=1 go build -buildmode=pie -trimpath -ldflags="-s -w $(VERSION_LDFLAGS)" -o bin/bootstashd ./cmd/bootstashd
+	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w $(VERSION_LDFLAGS)" -o bin/bootstash ./cmd/bootstash
+
+override_dh_auto_test:
+	go test ./...
+
+override_dh_auto_install:
+	install -d debian/bootstash/usr/sbin
+	install -m 0755 bin/bootstashd debian/bootstash/usr/sbin/bootstashd
+	install -m 0755 bin/bootstash debian/bootstash/usr/sbin/bootstash
+	install -d debian/bootstash/etc/pam.d
+	install -m 0644 contrib/pam.d/bootstashd debian/bootstash/etc/pam.d/bootstashd
+	install -d debian/bootstash/usr/lib/bootstash
+	install -m 0644 internal/config/defaults.conf debian/bootstash/usr/lib/bootstash/defaults.conf
+	install -d debian/bootstash/usr/share/doc/bootstash/examples
+	install -m 0644 contrib/config.example debian/bootstash/usr/share/doc/bootstash/examples/config.example
+	install -m 0644 contrib/nginx-location.conf debian/bootstash/usr/share/doc/bootstash/examples/nginx-location.conf
+	install -m 0644 contrib/apache-location.conf debian/bootstash/usr/share/doc/bootstash/examples/apache-location.conf
+
+override_dh_installsystemd:
+	dh_installsystemd --no-enable --no-start
+
+# dh_auto_clean prefers `make distclean`, which deletes debian/changelog.
+override_dh_auto_clean:
+	$(MAKE) clean

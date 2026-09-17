@@ -1,0 +1,40 @@
+{{/* Copyright (C) 2026 Nye Liu. SPDX-License-Identifier: GPL-3.0-or-later */}}
+{{define "listing"}}
+<nav>
+{{if .Parent}}<a href="{{.Parent}}">Parent directory</a> · {{end}}
+<a href="/home/">Your files</a> · <a href="/files/">Shared</a>
+</nav>
+<h1>{{.Heading}}</h1>
+{{if .CanWrite}}
+<form method="post" enctype="multipart/form-data" action="{{.Action}}">
+<label>Upload<br><input type="file" name="file"></label>
+<button type="submit">Upload</button>
+</form>
+<form method="post" action="{{.Action}}">
+<input type="hidden" name="mkdir" value="1">
+<label>New folder<br><input type="text" name="name" required></label>
+<button type="submit">Create</button>
+</form>
+{{end}}
+<table>
+<thead><tr><th>Name</th><th>Size</th><th>Date</th>{{if .CanWrite}}<th></th>{{end}}</tr></thead>
+<tbody>
+{{range .Entries}}
+<tr>
+<td>{{if .Dir}}<a href="{{.Href}}">{{.Name}}/</a>{{else}}<a href="{{.Href}}">{{.Name}}</a>{{end}}</td>
+<td>{{if not .Dir}}{{.Size}}{{end}}</td>
+<td>{{.Date}}</td>
+{{if $.CanWrite}}
+<td>
+<form method="post" action="{{$.Action}}">
+<input type="hidden" name="delete" value="1">
+<input type="hidden" name="name" value="{{.Name}}">
+<button type="submit">Delete</button>
+</form>
+</td>
+{{end}}
+</tr>
+{{end}}
+</tbody>
+</table>
+{{end}}

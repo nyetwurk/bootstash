@@ -1,0 +1,44 @@
+name: Build
+
+on:
+  push:
+    branches: [ '**' ]
+  pull_request:
+    branches: [ '**' ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: taiki-e/install-action@git-cliff
+      - name: Install package build deps
+        run: sudo apt-get update && sudo apt-get install -y libpam0g-dev build-essential dpkg-dev debhelper lintian
+      - name: make test
+        run: make test
+      - name: make packages
+        run: make packages
+        env:
+          DEB_BUILD_OPTIONS: nocheck
+      - name: make lintian
+        run: make lintian
+      - name: Tree after package build
+        if: failure()
+        run: |
+          git status --short
+          git diff
+          git ls-files --others --exclude-standard
+      - uses: rlespinasse/github-slug-action@v5
+        id: slug
+        with:
+          short-length: 6
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bootstash-${{ steps.slug.outputs.GITHUB_SHA_SHORT }}
+          path: packages/*
