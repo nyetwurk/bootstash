@@ -1,0 +1,97 @@
+#!/bin/sh
+# Copyright (C) 2026 Nye Liu
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -e
+
+#DEBHELPER#
+
+op=/etc/default/bootstash
+secrets=/etc/bootstash/oidc-google.json
+
+has_key() {
+	file=$1
+	key=$2
+	[ -r "$file" ] || return 1
+	grep -q "^[ 	]*${key}=" "$file"
+}
+
+has_google_client() {
+	file=$1
+	[ -r "$file" ] || return 1
+	grep -q '"client_id"[[:space:]]*:[[:space:]]*"[^"]' "$file"
+}
+
+can_start() {
+	[ -x /usr/sbin/bootstashd ] && /usr/sbin/bootstashd -t >/dev/null 2>&1
+}
+
+# After certs: try-restart if already up (new binary). Start only when
+# check-config would pass, so first install without OIDC stays down
+# instead of a failed unit. Never fail configure. Never enable.
+maybe_start() {
+	[ -z "${DPKG_ROOT:-}" ] || return 0
+	[ -d /run/systemd/system ] || return 0
+	command -v deb-systemd-invoke >/dev/null 2>&1 || return 0
+	systemctl --system daemon-reload >/dev/null 2>&1 || true
+	if systemctl is-active --quiet bootstash; then
+		echo "bootstash: try-restart bootstash.service" >&2
+		deb-systemd-invoke try-restart bootstash.service >/dev/null || true
+		return 0
+	fi
+	if can_start; then
+		echo "bootstash: starting bootstash.service" >&2
+		deb-systemd-invoke start bootstash.service >/dev/null || true
+	fi
+}
+
+print_next() {
+	need=
+	oidc=
+	if has_google_client "$secrets"; then
+		oidc=1
+	fi
+	if ! command -v systemctl >/dev/null 2>&1 || ! systemctl is-active --quiet bootstash; then
+		echo "bootstash: daemon is not running." >&2
+		echo "  sudo bootstash check-config" >&2
+		if [ -z "$oidc" ]; then
+			echo "  sudo bootstash provision-google" >&2
+		fi
+		echo "  sudo systemctl enable --now bootstash" >&2
+		need=1
+	elif ! systemctl is-enabled --quiet bootstash 2>/dev/null; then
+		echo "bootstash: running, but not enabled on boot." >&2
+		echo "  sudo systemctl enable bootstash" >&2
+		need=1
+	fi
+	if [ -z "$oidc" ] && command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet bootstash; then
+		echo "bootstash: no Google client id. Run: sudo bootstash provision-google" >&2
+		need=1
+	fi
+	if ! has_key "$op" BIND; then
+		echo "bootstash: BIND is still 127.0.0.1:8080. Set BIND in $op if a phone must reach you." >&2
+		need=1
+	fi
+	if [ ! -d /etc/bootstash/certs ] || ! find /etc/bootstash/certs -name fullchain.pem 2>/dev/null | grep -q .; then
+		echo "bootstash: no TLS files under /etc/bootstash/certs (HTTP unless you set TLS_CERT)." >&2
+		need=1
+	fi
+	if [ -n "$need" ]; then
+		echo "bootstash: see /usr/share/doc/bootstash/QUICKSTART.md" >&2
+	fi
+}
+
+# Copy any already-issued Let's Encrypt lineage the daemon can use.
+# Certbot runs the same hook on issue/renew; this covers install after
+# the cert already exists (otherwise the next renew could be months away).
+# dpkg will not restore a conffile the operator deleted; put the
+# packaged hints back so the hook can leave a commented CERT_NAME=.
+if [ "$1" = configure ]; then
+	if [ ! -f "$op" ] && [ -f /usr/lib/bootstash/default ]; then
+		install -m 0644 /usr/lib/bootstash/default "$op"
+	fi
+	if [ -x /usr/lib/bootstash/letsencrypt-deploy ]; then
+		/usr/lib/bootstash/letsencrypt-deploy sync || true
+	fi
+	maybe_start
+	print_next
+fi
