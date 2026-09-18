@@ -9,6 +9,8 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
+
+	"github.com/nyet/bootstash/internal/store"
 )
 
 //go:embed templates/*
@@ -24,6 +26,9 @@ type pageData struct {
 	Parent   string
 	Action   string
 	CanWrite bool
+	SignedIn bool
+	PAMUser  string
+	OIDCUser string
 	Entries  []listEntry
 }
 
@@ -76,4 +81,16 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	_, _ = w.Write(b)
+}
+
+func sessionPage(sess *store.Session, data pageData) pageData {
+	data.SignedIn = true
+	if sess != nil {
+		data.PAMUser = sess.PAMUser
+		data.OIDCUser = sess.Email
+		if data.OIDCUser == "" {
+			data.OIDCUser = sess.Sub
+		}
+	}
+	return data
 }

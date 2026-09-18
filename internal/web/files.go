@@ -170,14 +170,14 @@ func (s *Server) serveListing(w http.ResponseWriter, r *http.Request, root *jail
 	if rel != "" {
 		heading = rel
 	}
-	s.render(w, "listing", pageData{
+	s.render(w, "listing", sessionPage(s.session(r), pageData{
 		Title:    heading,
 		Heading:  heading,
 		Parent:   parent,
 		Action:   listingURL(prefix, rel),
 		CanWrite: true,
 		Entries:  entries,
-	})
+	}))
 }
 
 func (s *Server) servePut(w http.ResponseWriter, r *http.Request, root *jail.Root, rel string, sess *store.Session) {

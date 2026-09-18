@@ -93,7 +93,7 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		s.render(w, "link", pageData{Title: "Link account", Hint: hintUsername(sess.Email)})
+		s.render(w, "link", sessionPage(sess, pageData{Title: "Link account", Hint: hintUsername(sess.Email)}))
 	case http.MethodPost:
 		if !s.requireCSRF(w, r) {
 			return
@@ -107,12 +107,12 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := s.pam.Authenticate(user, pass); err != nil {
 			log.Printf("link denied pam=%s sub=%s from %s", user, sess.Sub, r.RemoteAddr)
-			s.render(w, "link", pageData{Title: "Link account", Error: "username or password not accepted", Hint: user})
+			s.render(w, "link", sessionPage(sess, pageData{Title: "Link account", Error: "username or password not accepted", Hint: user}))
 			return
 		}
 		if _, err := pamauth.Lookup(user); err != nil {
 			log.Printf("link unknown user=%s sub=%s from %s", user, sess.Sub, r.RemoteAddr)
-			s.render(w, "link", pageData{Title: "Link account", Error: "unknown local user", Hint: user})
+			s.render(w, "link", sessionPage(sess, pageData{Title: "Link account", Error: "unknown local user", Hint: user}))
 			return
 		}
 		if err := s.store.SetLink(sess.Iss, sess.Sub, user); err != nil {
@@ -133,6 +133,24 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireCSRF(w, r) {
+		return
+	}
+	sess := s.session(r)
+	if sess != nil {
+		pam := sess.PAMUser
+		_ = s.store.DeleteSession(sess.ID)
+		log.Printf("logout pam=%s sub=%s from %s", pam, sess.Sub, r.RemoteAddr)
+	}
+	s.clearSessionCookie(w)
+	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
 // fixCubbies reapplies 2770 user:bootstash on existing cubbies and

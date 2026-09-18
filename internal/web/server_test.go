@@ -296,6 +296,54 @@ func TestUnlinkHTTPGone(t *testing.T) {
 	}
 }
 
+func TestLogoutDropsSessionKeepsLink(t *testing.T) {
+	s, st, _ := testServer(t)
+	c := linkedSession(t, s, st, "alice")
+	req := httptest.NewRequest(http.MethodGet, "/home/", nil)
+	req.AddCookie(c)
+	rr := do(s, req)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `action="/logout"`) {
+		t.Fatalf("listing: %d %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "Sign out") || !strings.Contains(rr.Body.String(), "alice@example.com") || !strings.Contains(rr.Body.String(), " · alice") {
+		t.Fatalf("chrome: %s", rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), "/unlink") {
+		t.Fatal("unlink in HTML")
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/logout", nil)
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("csrf: %d", rr.Code)
+	}
+	if _, err := st.GetSession(c.Value); err != nil {
+		t.Fatal("csrf must not delete session")
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/logout", nil)
+	req.Header.Set("Origin", "https://stash.test")
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/login" {
+		t.Fatalf("logout: %d %s", rr.Code, rr.Header().Get("Location"))
+	}
+	if _, err := st.GetSession(c.Value); !os.IsNotExist(err) {
+		t.Fatalf("session remains: %v", err)
+	}
+	if pam, ok, err := st.LookupLink("https://accounts.google.com", "sub-alice"); err != nil || !ok || pam != "alice" {
+		t.Fatalf("link pam=%s ok=%v err=%v", pam, ok, err)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/home/", nil)
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("after logout GET /home/ => %d", rr.Code)
+	}
+}
+
 func TestRange(t *testing.T) {
 	s, st, dir := testServer(t)
 	c := linkedSession(t, s, st, "alice")

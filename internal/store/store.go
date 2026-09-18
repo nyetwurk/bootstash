@@ -130,6 +130,19 @@ func (s *Store) SaveSession(sess *Session) error {
 	return s.saveSession(sess)
 }
 
+// DeleteSession removes a session file. Missing is not an error.
+func (s *Store) DeleteSession(id string) error {
+	path, ok := s.sessionPath(id)
+	if !ok {
+		return os.ErrNotExist
+	}
+	err := os.Remove(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 func (s *Store) saveSession(sess *Session) error {
 	if sess == nil {
 		return os.ErrInvalid

@@ -54,6 +54,7 @@ reverse proxy may terminate HTTPS). See
   save them)
 - Upload into **your** folder
 - Delete files (and empty folders) in **your** folder
+- Sign out (this browser session; the Linux link stays)
 - Later: **expiration** of HTTP-uploaded kit files so the tree does not
   accumulate forever
 

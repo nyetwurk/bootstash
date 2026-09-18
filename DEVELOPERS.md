@@ -136,10 +136,12 @@ directory is 409. Do not serve `state/`. CSRF (`Origin` or
 `Sec-Fetch-Site` vs `PUBLIC_URL`) on every state-changing request.
 New HTTP files `0660`, dirs `0770`.
 
-Routes: `/login`, `/oidc/callback`, `/link`, `/home/`.
-Unlinked sessions only reach login, callback, and `/link`.
+Routes: `/login`, `/oidc/callback`, `/link`, `/logout`, `/home/`.
+Unlinked sessions only reach login, callback, `/link`, and `/logout`.
 v1 link table is `bootstash links` and `bootstash unlink USER`
 (operator access to `$DATA/state`), not HTTP.
+HTML **Sign out** is `POST /logout`: this session file and cookie only.
+The PAM map stays. Not unlink.
 HTML is a few templates, large targets (laptop, tablet, or phone),
 packaged `:root` + `prefers-color-scheme`. No SPA, no second desktop
 UI, no theme picker.
@@ -175,4 +177,5 @@ Not an `ADMIN_USERS` HTTP power.
 ## Tests that matter
 
 Jail, Alice/Bob, CSRF, oversize, unlinked cannot read trees, Range,
-bad PAM, DELETE, cubby `0711`/`2770`/`0640`, `links` / `unlink` PAM map.
+bad PAM, DELETE, cubby `0711`/`2770`/`0640`, `links` / `unlink` PAM map,
+`POST /logout` keeps the map.

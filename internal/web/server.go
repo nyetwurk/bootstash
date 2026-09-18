@@ -138,6 +138,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleCallback(w, r)
 	case r.URL.Path == "/link":
 		s.handleLink(w, r)
+	case r.URL.Path == "/logout":
+		s.handleLogout(w, r)
 	case strings.HasPrefix(r.URL.Path, "/home"):
 		s.handleFiles(w, r)
 	case strings.HasPrefix(r.URL.Path, "/static/"):
@@ -194,6 +196,19 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, sess *store.Session) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  sess.Expires,
+	})
+}
+
+func (s *Server) clearSessionCookie(w http.ResponseWriter) {
+	secure := strings.HasPrefix(s.config().PublicURL, "https://")
+	http.SetCookie(w, &http.Cookie{
+		Name:     s.cookieName(),
+		Value:    "",
+		Path:     "/",
+		Secure:   secure,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
 	})
 }
 

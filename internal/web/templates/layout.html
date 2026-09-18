@@ -9,6 +9,12 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+{{if .SignedIn}}
+<header class="session">
+<p>{{if .OIDCUser}}{{.OIDCUser}} · {{end}}{{if .PAMUser}}{{.PAMUser}}{{else}}Not linked yet{{end}}</p>
+<form method="post" action="/logout"><button type="submit">Sign out</button></form>
+</header>
+{{end}}
 {{template "body" .}}
 </body>
 </html>{{end}}

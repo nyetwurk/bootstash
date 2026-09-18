@@ -45,6 +45,15 @@ func TestSessionAndLink(t *testing.T) {
 	if err != nil || got.PAMUser != "alice" {
 		t.Fatalf("%+v %v", got, err)
 	}
+	if err := st.DeleteSession(sess.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.GetSession(sess.ID); !os.IsNotExist(err) {
+		t.Fatalf("deleted session: %v", err)
+	}
+	if err := st.DeleteSession(sess.ID); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestUnlinkPAMDropsLinksAndSessions(t *testing.T) {
