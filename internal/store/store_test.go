@@ -179,6 +179,60 @@ func TestSaveLinkedSessionRotatesID(t *testing.T) {
 	}
 }
 
+func TestSaveLinkedSessionRevokesOtherSessions(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	iss := "https://accounts.google.com"
+	s1, err := st.CreateSession(iss, "sub-1", "a@b.c", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveLinkedSession(s1, "alice"); err != nil {
+		t.Fatal(err)
+	}
+	s2, err := st.CreateSession(iss, "sub-1", "a@b.c", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s2.PAMUser != "alice" {
+		t.Fatalf("s2 pam %q", s2.PAMUser)
+	}
+	s3, err := st.CreateSession(iss, "sub-carol", "c@b.c", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveLinkedSession(s3, "carol"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveLinkedSession(s1, "bob"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetSession(s2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PAMUser != "" {
+		t.Fatalf("s2 still pam=%q", got.PAMUser)
+	}
+	if got.ID == s1.ID {
+		t.Fatal("revoked other session id")
+	}
+	pam, ok, err := st.LookupLink(iss, "sub-1")
+	if err != nil || !ok || pam != "bob" {
+		t.Fatalf("link pam=%s ok=%v err=%v", pam, ok, err)
+	}
+	cur, err := st.GetSession(s1.ID)
+	if err != nil || cur.PAMUser != "bob" {
+		t.Fatalf("current %+v %v", cur, err)
+	}
+	other, err := st.GetSession(s3.ID)
+	if err != nil || other.PAMUser != "carol" {
+		t.Fatalf("carol %+v %v", other, err)
+	}
+}
+
 func TestGetSessionRejectsUnsafeID(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

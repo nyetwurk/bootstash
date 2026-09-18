@@ -51,7 +51,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "identity provider unavailable", http.StatusBadGateway)
 		return
 	}
-	s.putOauthTx(txID, nonce, verifier, time.Now().Add(oauthTTL))
+	if err := s.putOauthTx(txID, nonce, verifier, time.Now().Add(oauthTTL)); err != nil {
+		log.Printf("login oauth tx full from %s", r.RemoteAddr)
+		http.Error(w, "too many logins", http.StatusServiceUnavailable)
+		return
+	}
 	s.setCookie(w, s.oauthCookieName(), txID, int(oauthTTL.Seconds()))
 	log.Printf("login start google from %s", r.RemoteAddr)
 	http.Redirect(w, r, u, http.StatusFound)

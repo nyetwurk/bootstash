@@ -62,9 +62,10 @@ Install is a **public `.deb`**.
 - Later: **expiration** of HTTP-uploaded kit files so the tree does not
   accumulate forever
 
-Later visits only need Google. The Linux password is not used again
-until an operator runs `bootstash unlink` (that user’s subjects must
-link again).
+Later visits only need Google. Changing or disabling the Unix account
+does not drop the map. The Linux password is not used again until an
+operator runs `bootstash unlink` (that user's subjects must link
+again).
 
 Your Google email is not a folder name. Folders follow the linked Linux
 username. Identity is the provider’s `(issuer, sub)`.

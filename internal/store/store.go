@@ -280,11 +280,17 @@ func (s *Store) SetLink(iss, sub, pamUser string) error {
 
 // SaveLinkedSession writes the link and session together so unlink cannot
 // leave a PAM session after dropping the map. The session id is rotated.
+// Other sessions for the same (iss, sub) lose PAMUser when the mapping
+// changes to a different Unix name.
 func (s *Store) SaveLinkedSession(sess *Session, pamUser string) error {
 	if sess == nil {
 		return os.ErrInvalid
 	}
 	return s.withLock(func() error {
+		prev, _, err := s.lookupLinkLocked(sess.Iss, sess.Sub)
+		if err != nil {
+			return err
+		}
 		if err := s.setLinkLocked(sess.Iss, sess.Sub, pamUser); err != nil {
 			return err
 		}
@@ -299,15 +305,15 @@ func (s *Store) SaveLinkedSession(sess *Session, pamUser string) error {
 			sess.ID = old
 			return err
 		}
-		if old == id {
-			return nil
+		if old != id {
+			if path, ok := s.sessionPath(old); ok {
+				if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+					return err
+				}
+			}
 		}
-		path, ok := s.sessionPath(old)
-		if !ok {
-			return nil
-		}
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			return err
+		if prev != "" && prev != pamUser {
+			return s.clearSubjectPAMLocked(sess.Iss, sess.Sub, sess.ID)
 		}
 		return nil
 	})
@@ -403,6 +409,36 @@ func (s *Store) clearSessionPAMLocked(pam string, links []Link) (int, error) {
 		n++
 	}
 	return n, nil
+}
+
+func (s *Store) clearSubjectPAMLocked(iss, sub, exceptID string) error {
+	ents, err := os.ReadDir(s.dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range ents {
+		name := e.Name()
+		if !strings.HasPrefix(name, "sessions-") || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		path := filepath.Join(s.dir, name)
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		var sess Session
+		if err := json.Unmarshal(b, &sess); err != nil {
+			return fmt.Errorf("session %s: %w", name, err)
+		}
+		if sess.ID == exceptID || sess.Iss != iss || sess.Sub != sub || sess.PAMUser == "" {
+			continue
+		}
+		sess.PAMUser = ""
+		if err := s.saveSession(&sess); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) readLinks() (*linkFile, error) {

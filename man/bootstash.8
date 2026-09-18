@@ -150,6 +150,7 @@ does not grant this; write access to
 does (usually
 .BR sudo ).
 Does not call PAM and does not create or delete Unix users.
+Changing or disabling the Unix account does not drop the map.
 State files stay owned as
 .I $DATA/state
 (not root) so the daemon can still read them.

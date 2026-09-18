@@ -152,8 +152,9 @@ hook does that when the service is active).
 ## Users and files
 
 To see who is linked: `sudo bootstash links` (PAM name, issuer, `sub`).
-To drop a user’s Google→Linux map (they must link again; the cubby
-stays): `sudo bootstash unlink alice`.
+To drop a user's Google->Linux map (they must link again; the cubby
+stays): `sudo bootstash unlink alice`. Changing or disabling the Unix
+account does not drop the map.
 
 After link, that Unix user can `cp` into
 `/var/lib/bootstash/users/<name>/`. Keep ownership as yourself.

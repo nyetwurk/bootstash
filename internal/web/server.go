@@ -34,6 +34,7 @@ import (
 
 const sessionTTL = 7 * 24 * time.Hour
 const oauthTTL = 15 * time.Minute
+const oauthMaxTx = 1024
 
 type oauthTx struct {
 	nonce    string
@@ -294,13 +295,23 @@ func (s *Server) hostCookie(httpsName, httpName string) string {
 	return httpName
 }
 
-func (s *Server) putOauthTx(id, nonce, verifier string, exp time.Time) {
+func (s *Server) putOauthTx(id, nonce, verifier string, exp time.Time) error {
 	s.oauthMu.Lock()
 	defer s.oauthMu.Unlock()
 	if s.oauthTx == nil {
 		s.oauthTx = make(map[string]oauthTx)
 	}
+	now := time.Now()
+	for k, tx := range s.oauthTx {
+		if now.After(tx.exp) {
+			delete(s.oauthTx, k)
+		}
+	}
+	if _, ok := s.oauthTx[id]; !ok && len(s.oauthTx) >= oauthMaxTx {
+		return fmt.Errorf("oauth tx full")
+	}
 	s.oauthTx[id] = oauthTx{nonce: nonce, verifier: verifier, exp: exp}
+	return nil
 }
 
 func (s *Server) takeOauthTx(id string) (nonce, verifier string, err error) {

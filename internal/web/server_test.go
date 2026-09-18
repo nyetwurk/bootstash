@@ -6,6 +6,7 @@ package web
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -686,7 +687,9 @@ func TestCallbackRejects(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			s.putOauthTx(tx.Value, nonce, "", time.Now().Add(-time.Second))
+			if err := s.putOauthTx(tx.Value, nonce, "", time.Now().Add(-time.Second)); err != nil {
+				t.Fatal(err)
+			}
 			return oauthCallback(state, tx)
 		}},
 		{"attacker state", func(t *testing.T, s *Server) *http.Request {
@@ -726,6 +729,36 @@ func TestCallbackRejectsReplay(t *testing.T) {
 	rr = do(s, oauthCallback(state, tx))
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("replay: %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestOauthTxCap(t *testing.T) {
+	s, _, _ := testServer(t)
+	for i := 0; i < oauthMaxTx; i++ {
+		googleLogin(t, s)
+	}
+	rr := do(s, httptest.NewRequest(http.MethodGet, "/login?provider=google", nil))
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("over cap: %d %s", rr.Code, rr.Body.String())
+	}
+	if cookieNamed(rr, s.oauthCookieName()) != nil {
+		t.Fatal("oauth cookie over cap")
+	}
+}
+
+func TestOauthTxPurgeExpired(t *testing.T) {
+	s, _, _ := testServer(t)
+	for i := 0; i < oauthMaxTx; i++ {
+		if err := s.putOauthTx(fmt.Sprintf("%064x", i), "n", "v", time.Now().Add(-time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rr := do(s, httptest.NewRequest(http.MethodGet, "/login?provider=google", nil))
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expired full: %d %s", rr.Code, rr.Body.String())
+	}
+	if cookieNamed(rr, s.oauthCookieName()) == nil {
+		t.Fatal("missing oauth cookie")
 	}
 }
 

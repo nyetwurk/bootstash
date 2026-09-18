@@ -166,7 +166,9 @@ sets a one-time oauth cookie (`__Host-bootstash-oauth` when
 state. AuthCodeURL adds PKCE S256; the verifier is stored in that
 transaction. `/oidc/callback` requires the cookie, consumes the
 transaction, and sends the verifier on Exchange. Then PAM
-`POST /link`. `/link` rotates the session id and cookie. The daemon
+`POST /link`. `/link` rotates the session id and cookie. Other
+sessions for that `(issuer, sub)` lose PAM when the mapping changes
+to a different Unix name. The daemon
 (`User=bootstash`) does not call PAM in process. It execs
 `/usr/lib/bootstash/pam` (setuid `4750`
 `root:bootstash`, not on `PATH`): argv is service + username,
@@ -191,6 +193,7 @@ client JSON. It does **not** create the Google web client
 `bootstash links` prints `user issuer sub` (not email).
 `bootstash unlink USER` drops every `(issuer, sub)` mapped to that
 PAM name and clears `pam_user` on those sessions. The cubby stays.
+Changing or disabling the Unix account does not drop the map.
 Not an `ADMIN_USERS` HTTP power.
 
 ## Tests that matter
@@ -198,4 +201,4 @@ Not an `ADMIN_USERS` HTTP power.
 Jail, Alice/Bob, CSRF, oversize, unlinked cannot read trees, Range,
 bad PAM, UID 0, DELETE, cubby `0711`/`2770`/`0640`, `links` / `unlink` PAM map,
 `POST /logout` keeps the map, PKCE, session rotate on `/link`,
-response headers.
+relink drops other sessions, oauth login cap, response headers.

@@ -52,6 +52,9 @@ func TestRunUnlinkDropsPAMMap(t *testing.T) {
 	if code := runUnlink(append(args, "alice")); code != 0 {
 		t.Fatalf("unlink alice: %d", code)
 	}
+	if !strings.Contains(logs.String(), "unlink pam=alice subjects=1 sessions=1") {
+		t.Fatalf("missing unlink summary: %q", logs.String())
+	}
 	if !strings.Contains(logs.String(), "unlink pam=alice sub=sub-1") {
 		t.Fatalf("missing unlink log: %q", logs.String())
 	}
@@ -70,5 +73,49 @@ func TestRunUnlinkDropsPAMMap(t *testing.T) {
 	}
 	if code := runUnlink(args); code != 2 {
 		t.Fatalf("no user: %d", code)
+	}
+}
+
+func TestRunUnlinkLogsSessionCountWithSubjects(t *testing.T) {
+	dir := t.TempDir()
+	data := filepath.Join(dir, "data")
+	op := filepath.Join(dir, "config")
+	if err := os.WriteFile(op, []byte("DATA="+data+"\nPUBLIC_URL=https://stash.test\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	iss := "https://accounts.google.com"
+	if err := st.SetLink(iss, "sub-1", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		sess, err := st.CreateSession(iss, "sub-1", "a@b.c", time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sess.PAMUser = "alice"
+		if err := st.SaveSession(sess); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	args := []string{"-defaults", filepath.Join(dir, "missing-dist"), "-config", op, "-secrets", filepath.Join(dir, "missing-secrets")}
+	var logs bytes.Buffer
+	log.SetOutput(&logs)
+	log.SetPrefix("bootstashd: ")
+	log.SetFlags(log.Lmsgprefix)
+	t.Cleanup(func() {
+		log.SetOutput(os.Stderr)
+		log.SetPrefix("")
+		log.SetFlags(log.LstdFlags)
+	})
+	if code := runUnlink(append(args, "alice")); code != 0 {
+		t.Fatalf("unlink alice: %d", code)
+	}
+	if !strings.Contains(logs.String(), "unlink pam=alice subjects=1 sessions=2") {
+		t.Fatalf("missing unlink summary: %q", logs.String())
 	}
 }
