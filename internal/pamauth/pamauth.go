@@ -7,6 +7,7 @@ package pamauth
 import (
 	"errors"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode"
@@ -43,7 +44,7 @@ func ValidService(name string) bool {
 
 // ValidUsername is a single path component safe to use under $DATA/users/.
 func ValidUsername(name string) bool {
-	if name == "" || name == "." || name == ".." {
+	if name == "" || name == "." || name == ".." || !filepath.IsLocal(name) {
 		return false
 	}
 	return validASCIIToken(name)

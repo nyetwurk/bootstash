@@ -6,8 +6,20 @@ package osutil
 import (
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"syscall"
 )
+
+// ChownIn is Chown after the path is shown to stay under root.
+func ChownIn(root, path string, uid, gid int) error {
+	root = filepath.Clean(root)
+	path = filepath.Clean(path)
+	if path != root && !strings.HasPrefix(path, root+string(filepath.Separator)) {
+		return os.ErrInvalid
+	}
+	return Chown(path, uid, gid)
+}
 
 // Chown sets uid/gid. -1 means leave that id. Logs when ids change.
 func Chown(path string, uid, gid int) error {

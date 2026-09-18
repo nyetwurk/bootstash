@@ -83,6 +83,19 @@ func testServer(t *testing.T) (*Server, *store.Store, string) {
 	return s, st, dir
 }
 
+func TestEnsureUserDirRejectsTraversal(t *testing.T) {
+	s, _, dir := testServer(t)
+	if err := s.ensureUserDir("../etc"); err == nil {
+		t.Fatal("expected reject")
+	}
+	if err := s.ensureUserDir("alice/../etc"); err == nil {
+		t.Fatal("expected reject")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "etc")); err == nil {
+		t.Fatal("must not create outside users/")
+	}
+}
+
 func TestUsersDirTraversable(t *testing.T) {
 	_, _, dir := testServer(t)
 	st, err := os.Stat(filepath.Join(dir, "users"))

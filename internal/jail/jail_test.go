@@ -54,6 +54,26 @@ func TestExtraSlashes(t *testing.T) {
 	defer f.Close()
 }
 
+func TestFileNameIsLocal(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "ok.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	j, err := OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer j.Close()
+	f, err := j.Open("ok.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if f.Name() != "ok.txt" {
+		t.Fatalf("name %q", f.Name())
+	}
+}
+
 func TestSymlinkEscape(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()

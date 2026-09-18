@@ -104,10 +104,11 @@ func (s *Store) CreateSession(iss, sub, email string, ttl time.Duration) (*Sessi
 
 // GetSession loads a non-expired session.
 func (s *Store) GetSession(id string) (*Session, error) {
-	if id == "" || !safeID(id) {
+	path, ok := s.sessionPath(id)
+	if !ok {
 		return nil, os.ErrNotExist
 	}
-	b, err := os.ReadFile(s.sessionPath(id))
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +117,7 @@ func (s *Store) GetSession(id string) (*Session, error) {
 		return nil, err
 	}
 	if time.Now().After(sess.Expires) {
-		_ = os.Remove(s.sessionPath(id))
+		_ = os.Remove(path)
 		return nil, os.ErrNotExist
 	}
 	return &sess, nil
@@ -128,15 +129,25 @@ func (s *Store) SaveSession(sess *Session) error {
 }
 
 func (s *Store) saveSession(sess *Session) error {
+	if sess == nil {
+		return os.ErrInvalid
+	}
+	path, ok := s.sessionPath(sess.ID)
+	if !ok {
+		return os.ErrInvalid
+	}
 	b, err := json.Marshal(sess)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.sessionPath(sess.ID), b, 0600)
+	return os.WriteFile(path, b, 0600)
 }
 
-func (s *Store) sessionPath(id string) string {
-	return filepath.Join(s.dir, "sessions-"+id+".json")
+func (s *Store) sessionPath(id string) (string, bool) {
+	if !safeID(id) || !filepath.IsLocal(id) {
+		return "", false
+	}
+	return filepath.Join(s.dir, "sessions-"+id+".json"), true
 }
 
 // LookupLink returns the PAM user for an OIDC subject.

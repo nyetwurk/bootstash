@@ -46,7 +46,7 @@ func TestValidUsername(t *testing.T) {
 	if !ValidUsername("alice") || !ValidUsername("a.b_c-1") {
 		t.Fatal("good names")
 	}
-	if ValidUsername("") || ValidUsername(".") || ValidUsername("..") || ValidUsername("a/b") {
+	if ValidUsername("") || ValidUsername(".") || ValidUsername("..") || ValidUsername("a/b") || ValidUsername("../x") {
 		t.Fatal("bad names")
 	}
 }

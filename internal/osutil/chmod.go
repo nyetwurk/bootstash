@@ -6,7 +6,29 @@ package osutil
 import (
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 )
+
+// Confine returns a cleaned path that is root or a descendant of root.
+func Confine(root, path string) (string, error) {
+	root = filepath.Clean(root)
+	path = filepath.Clean(path)
+	if path != root && !strings.HasPrefix(path, root+string(filepath.Separator)) {
+		return "", os.ErrInvalid
+	}
+	return path, nil
+}
+
+// ChmodIn is Chmod after the path is shown to stay under root.
+func ChmodIn(root, path string, mode os.FileMode) error {
+	root = filepath.Clean(root)
+	path = filepath.Clean(path)
+	if path != root && !strings.HasPrefix(path, root+string(filepath.Separator)) {
+		return os.ErrInvalid
+	}
+	return Chmod(path, mode)
+}
 
 // Chmod sets mode. Logs when the Unix permission bits actually change.
 func Chmod(path string, mode os.FileMode) error {

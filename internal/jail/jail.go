@@ -60,7 +60,11 @@ func (r *Root) Open(rel string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return os.NewFile(uintptr(fd), rel), nil
+	name := "."
+	if filepath.IsLocal(rel) {
+		name = rel
+	}
+	return os.NewFile(uintptr(fd), name), nil
 }
 
 // Create truncates or creates a file relative to the jail.
@@ -69,7 +73,11 @@ func (r *Root) Create(rel string, perm os.FileMode) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	f := os.NewFile(uintptr(fd), rel)
+	name := "."
+	if filepath.IsLocal(rel) {
+		name = rel
+	}
+	f := os.NewFile(uintptr(fd), name)
 	from := os.FileMode(0)
 	if st, err := f.Stat(); err == nil {
 		from = st.Mode()

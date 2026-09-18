@@ -4,6 +4,7 @@
 package store
 
 import (
+	"os"
 	"testing"
 	"time"
 )
@@ -39,6 +40,18 @@ func TestSessionAndLink(t *testing.T) {
 	got, err = st.GetSession(sess.ID)
 	if err != nil || got.PAMUser != "alice" {
 		t.Fatalf("%+v %v", got, err)
+	}
+}
+
+func TestGetSessionRejectsUnsafeID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"", "../x", "..", "zz", "sessions-x.json"} {
+		if _, err := st.GetSession(id); !os.IsNotExist(err) {
+			t.Fatalf("%q: %v", id, err)
+		}
 	}
 }
 

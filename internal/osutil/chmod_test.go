@@ -33,6 +33,26 @@ func TestChmodNoopAndChange(t *testing.T) {
 	}
 }
 
+func TestConfine(t *testing.T) {
+	dir := t.TempDir()
+	inside := filepath.Join(dir, "a")
+	got, err := Confine(dir, inside)
+	if err != nil || got != filepath.Clean(inside) {
+		t.Fatalf("%s %v", got, err)
+	}
+	if _, err := Confine(dir, filepath.Join(dir, "..", "outside")); err == nil {
+		t.Fatal("escape")
+	}
+}
+
+func TestChmodInRejectsEscape(t *testing.T) {
+	dir := t.TempDir()
+	outside := filepath.Join(filepath.Dir(dir), "outside")
+	if err := ChmodIn(dir, outside, 0600); err == nil {
+		t.Fatal("escape")
+	}
+}
+
 func TestUnixBitsSetgid(t *testing.T) {
 	if UnixBits(os.ModeSetgid|0770) != 0o2770 {
 		t.Fatalf("%04o", UnixBits(os.ModeSetgid|0770))

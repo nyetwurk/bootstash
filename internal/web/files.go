@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -100,7 +101,7 @@ func (s *Server) isAdmin(sess *store.Session) bool {
 func (s *Server) jailPath(home bool, sess *store.Session) (string, error) {
 	cfg := s.config()
 	if home {
-		if !pamauth.ValidUsername(sess.PAMUser) {
+		if !pamauth.ValidUsername(sess.PAMUser) || !filepath.IsLocal(sess.PAMUser) {
 			return "", os.ErrNotExist
 		}
 		return path.Join(cfg.Data, "users", sess.PAMUser), nil
