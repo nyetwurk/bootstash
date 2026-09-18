@@ -217,3 +217,18 @@ func TestRemoveSymlinkDoesNotFollow(t *testing.T) {
 		t.Fatal("followed symlink and removed outside file")
 	}
 }
+
+func TestReadDirNamesNotDir(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "f.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	j, err := OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer j.Close()
+	if _, err := j.ReadDirNames("f.txt"); err != ErrNotDir {
+		t.Fatalf("got %v", err)
+	}
+}

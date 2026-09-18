@@ -10,11 +10,18 @@
 </head>
 <body>
 {{if .SignedIn}}
-<header class="session">
+<header class="top">
+<a class="brand" href="/">bootstash</a>
+<div class="who">
 <p>{{if .OIDCUser}}{{.OIDCUser}} · {{end}}{{if .PAMUser}}{{.PAMUser}}{{else}}Not linked yet{{end}}</p>
 <form method="post" action="/logout"><button type="submit">Sign out</button></form>
+</div>
 </header>
-{{end}}
+<main>
 {{template "body" .}}
+</main>
+{{else}}
+{{template "body" .}}
+{{end}}
 </body>
 </html>{{end}}

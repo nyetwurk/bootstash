@@ -3,36 +3,340 @@
 
 :root {
   color-scheme: light dark;
-  --bg: #fff;
-  --fg: #111;
-  --muted: #ddd;
-  --link: #0645ad;
+  --bg: #f4f1ea;
+  --fg: #1a1a1a;
+  --panel: #fff;
+  --line: #d8d2c6;
+  --muted: #5e5a53;
+  --link: #0b5cab;
   --err: #a40000;
+  --btn: #1a1a1a;
+  --btn-fg: #fff;
   --input-bg: #fff;
-  --input-fg: #111;
+  --input-fg: #1a1a1a;
+  --radius: 0.55rem;
+  --space: 1.25rem;
+  --max: 52rem;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #121212;
     --fg: #eee;
-    --muted: #444;
+    --panel: #1c1c1c;
+    --line: #3a3a3a;
+    --muted: #b0b0b0;
     --link: #8ab4f8;
     --err: #ff8a80;
+    --btn: #eee;
+    --btn-fg: #121212;
     --input-bg: #1e1e1e;
     --input-fg: #eee;
   }
 }
 html { color-scheme: light dark; }
-body { background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; font-size: 18px; margin: 1rem; line-height: 1.4; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, sans-serif;
+  font-size: 1.05rem;
+  line-height: 1.45;
+  margin: 0;
+}
 a { color: var(--link); }
-a, button, input, label { font-size: 1rem; }
-a, button, input[type=submit], input[type=file] { min-height: 44px; display: inline-flex; align-items: center; }
-button, input[type=submit] { background: var(--input-bg); color: var(--input-fg); }
-table { width: 100%; border-collapse: collapse; }
-td, th { text-align: left; padding: 0.5rem 0.25rem; border-bottom: 1px solid var(--muted); }
-input[type=text], input[type=password] { width: 100%; max-width: 24rem; min-height: 44px; box-sizing: border-box; background: var(--input-bg); color: var(--input-fg); }
-.err { color: var(--err); }
-nav { margin-bottom: 1rem; }
-header.session { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 1rem; }
-header.session p { margin: 0; }
-header.session form { margin: 0; }
+:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  font-size: 0.88rem;
+}
+.brand {
+  font-weight: 650;
+  font-size: 1.15rem;
+  color: var(--fg);
+  text-decoration: none;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.top .brand {
+  flex: 0 0 auto;
+  font-size: 1rem;
+  min-height: 0;
+}
+.who {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  min-width: 0;
+  margin-left: auto;
+}
+.who p {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.who form { margin: 0; flex: 0 0 auto; }
+.top button {
+  min-height: 2.25rem;
+  padding: 0.2rem 0.55rem;
+  font-size: inherit;
+}
+main {
+  width: min(var(--max), calc(100% - 2 * var(--space)));
+  margin: 1.25rem auto 2.5rem;
+}
+.door {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  padding: var(--space);
+  box-sizing: border-box;
+  text-align: center;
+}
+.door .brand { font-size: 1.6rem; }
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  max-width: 24rem;
+}
+.panel h1 { margin: 0 0 0.6rem; font-size: 1.45rem; }
+.panel p { margin: 0 0 1rem; }
+.err { color: var(--err); margin: 0 0 0.75rem; }
+.stack { display: grid; gap: 0.85rem; }
+.stack label { display: grid; gap: 0.35rem; font-weight: 600; }
+button, .btn, input[type=submit], input[type=file]::file-selector-button {
+  min-height: 44px;
+  padding: 0.4rem 0.9rem;
+  font: inherit;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--fg);
+  cursor: pointer;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--btn);
+  color: var(--btn-fg);
+  border-color: var(--btn);
+  text-decoration: none;
+  font-weight: 650;
+  box-sizing: border-box;
+}
+.secret {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+.secret input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.reveal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 0.4rem;
+}
+.reveal svg {
+  display: block;
+  pointer-events: none;
+}
+.reveal[aria-pressed="false"] .eye-off,
+.reveal[aria-pressed="true"] .eye { display: none; }
+input[type=text], input[type=password], .add-field {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0.4rem 0.7rem;
+  font: inherit;
+  background: var(--input-bg);
+  color: var(--input-fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+input[type=file] {
+  min-height: 44px;
+  width: 100%;
+  font: inherit;
+}
+.danger {
+  color: var(--err);
+  background: transparent;
+}
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+}
+.crumbs a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.crumbs .sep { color: var(--line); }
+.files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.files li {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr) auto;
+  grid-template-areas:
+    "kind name del"
+    ". meta del";
+  gap: 0.15rem 0.5rem;
+  align-items: center;
+  padding: 0.45rem 0.8rem;
+  border-bottom: 1px solid var(--line);
+  min-height: 44px;
+}
+.files li:last-child { border-bottom: 0; }
+.files .kind {
+  grid-area: kind;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+.files .named {
+  grid-area: name;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 0;
+  gap: 0.35rem;
+}
+.files .name {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+  text-decoration: none;
+}
+.files .mark {
+  flex: 0 0 auto;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+.files .name:hover { text-decoration: underline; }
+.files .meta {
+  grid-area: meta;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+.files .size, .files .date {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+.files .del,
+.files .add .plus {
+  grid-area: del;
+  margin: 0;
+  justify-self: end;
+}
+.files .del button,
+.files .add .plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0;
+  border: 0;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+.files li.add {
+  grid-template-areas: "kind name del";
+}
+.files .add form {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  grid-area: name;
+  box-sizing: border-box;
+}
+.files .add-field {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  text-align: left;
+}
+label.add-field {
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.files .add .plus {
+  background: transparent;
+}
+.files .add input[type=file] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+.empty { color: var(--muted); }
+@media (min-width: 44rem) {
+  .files li {
+    grid-template-columns: 2.75rem minmax(0, 1fr) 6.5rem 9.75rem auto;
+    grid-template-areas: "kind name size date del";
+  }
+  .files li.add {
+    grid-template-areas: "kind name name name del";
+  }
+  .files .meta { display: contents; }
+  .files .size { grid-area: size; text-align: right; }
+  .files .date { grid-area: date; text-align: right; }
+}

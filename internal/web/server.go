@@ -14,7 +14,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -200,15 +202,75 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, sess *store.Session) {
 }
 
 func (s *Server) clearSessionCookie(w http.ResponseWriter) {
+	s.setCookie(w, s.cookieName(), "", -1)
+}
+
+func (s *Server) noticeCookieName() string {
+	if strings.HasPrefix(s.config().PublicURL, "https://") {
+		return "__Host-bootstash-notice"
+	}
+	return "bootstash_notice"
+}
+
+func (s *Server) setNotice(w http.ResponseWriter, key string) {
+	if listingErrMessage(key) == "" {
+		return
+	}
+	s.setCookie(w, s.noticeCookieName(), key, 60)
+}
+
+func (s *Server) takeNotice(w http.ResponseWriter, r *http.Request) string {
+	c, err := r.Cookie(s.noticeCookieName())
+	if err != nil || c.Value == "" {
+		return ""
+	}
+	s.setCookie(w, s.noticeCookieName(), "", -1)
+	return listingErrMessage(c.Value)
+}
+
+func (s *Server) downloadCookieName() string {
+	if strings.HasPrefix(s.config().PublicURL, "https://") {
+		return "__Host-bootstash-dl"
+	}
+	return "bootstash_dl"
+}
+
+func (s *Server) setDownloadMark(w http.ResponseWriter, rel string) {
+	rel = strings.Trim(path.Clean("/"+rel), "/")
+	if rel == "" || rel == "." {
+		return
+	}
+	s.setCookie(w, s.downloadCookieName(), url.QueryEscape(rel), 60)
+}
+
+func (s *Server) takeDownloadMark(w http.ResponseWriter, r *http.Request, listingRel string) string {
+	c, err := r.Cookie(s.downloadCookieName())
+	if err != nil || c.Value == "" {
+		return ""
+	}
+	rel, err := url.QueryUnescape(c.Value)
+	if err != nil {
+		s.setCookie(w, s.downloadCookieName(), "", -1)
+		return ""
+	}
+	name := downloadNameIn(listingRel, rel)
+	if name == "" {
+		return ""
+	}
+	s.setCookie(w, s.downloadCookieName(), "", -1)
+	return name
+}
+
+func (s *Server) setCookie(w http.ResponseWriter, name, value string, maxAge int) {
 	secure := strings.HasPrefix(s.config().PublicURL, "https://")
 	http.SetCookie(w, &http.Cookie{
-		Name:     s.cookieName(),
-		Value:    "",
+		Name:     name,
+		Value:    value,
 		Path:     "/",
 		Secure:   secure,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   -1,
+		MaxAge:   maxAge,
 	})
 }
 

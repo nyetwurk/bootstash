@@ -224,6 +224,15 @@ func do(s *Server, req *http.Request) *httptest.ResponseRecorder {
 	return rr
 }
 
+func cookieNamed(rr *httptest.ResponseRecorder, name string) *http.Cookie {
+	for _, c := range rr.Result().Cookies() {
+		if c.Name == name {
+			return c
+		}
+	}
+	return nil
+}
+
 func TestJailDotDotAndEncoded(t *testing.T) {
 	s, st, dir := testServer(t)
 	c := linkedSession(t, s, st, "alice")
@@ -525,11 +534,236 @@ func TestStaticCSSTheming(t *testing.T) {
 	for _, want := range []string{
 		"color-scheme: light dark",
 		"--bg:",
+		"--panel:",
 		"prefers-color-scheme: dark",
+		"min-height: 44px",
+		"flex-wrap: nowrap",
+		"text-overflow: ellipsis",
+		"kind name name name del",
+		"justify-self: end",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("css missing %q", want)
 		}
+	}
+}
+
+func TestHTMLPages(t *testing.T) {
+	s, st, dir := testServer(t)
+
+	rr := do(s, httptest.NewRequest(http.MethodGet, "/login", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("login: %d", rr.Code)
+	}
+	login := rr.Body.String()
+	for _, want := range []string{
+		`class="door"`,
+		`class="brand"`,
+		`href="/login?provider=google"`,
+		"Sign in with Google",
+		`class="btn"`,
+	} {
+		if !strings.Contains(login, want) {
+			t.Fatalf("login missing %q: %s", want, login)
+		}
+	}
+	if strings.Contains(login, `class="top"`) || strings.Contains(login, "Sign out") || strings.Contains(login, "/unlink") {
+		t.Fatalf("login chrome: %s", login)
+	}
+	if strings.Contains(login, "<h1>") || strings.Contains(login, "Pick up bootstrap") {
+		t.Fatalf("login extra copy: %s", login)
+	}
+
+	sess, err := st.CreateSession("https://accounts.google.com", "sub-x", "x@y.z", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &http.Cookie{Name: s.cookieName(), Value: sess.ID}
+	req := httptest.NewRequest(http.MethodGet, "/link", nil)
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("link: %d", rr.Code)
+	}
+	link := rr.Body.String()
+	for _, want := range []string{
+		`action="/logout"`,
+		"Sign out",
+		`action="/link"`,
+		`name="username"`,
+		`name="password"`,
+		`class="reveal"`,
+		`aria-label="Show password"`,
+		`class="eye"`,
+		`class="brand"`,
+		"Not linked yet",
+	} {
+		if !strings.Contains(link, want) {
+			t.Fatalf("link missing %q: %s", want, link)
+		}
+	}
+
+	cookie := linkedSession(t, s, st, "alice")
+	req = httptest.NewRequest(http.MethodGet, "/home/", nil)
+	req.AddCookie(cookie)
+	rr = do(s, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("empty listing: %d %s", rr.Code, rr.Body.String())
+	}
+	empty := rr.Body.String()
+	for _, want := range []string{"Files", `class="add dir"`, `class="add file"`, `name="file"`, `name="mkdir"`, "browse", "➕", "📁", "📄", `class="plus"`, `class="kind"`, `id="upload-label"`} {
+		if !strings.Contains(empty, want) {
+			t.Fatalf("empty listing missing %q: %s", want, empty)
+		}
+	}
+	if strings.Contains(empty, "Nothing here yet.") || strings.Contains(empty, ">Upload<") {
+		t.Fatalf("empty listing chrome: %s", empty)
+	}
+	if strings.Contains(empty, "⬇️") {
+		t.Fatalf("empty listing download mark: %s", empty)
+	}
+
+	sub := filepath.Join(dir, "users", "alice", "kit")
+	if err := os.Mkdir(sub, 0770); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "a.txt"), []byte("x"), 0660); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/home/kit/", nil)
+	req.AddCookie(cookie)
+	rr = do(s, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("nested listing: %d %s", rr.Code, rr.Body.String())
+	}
+	nested := rr.Body.String()
+	for _, want := range []string{
+		`href="/home/"`,
+		">Files<",
+		">kit<",
+		"a.txt",
+		"1 B",
+		`name="delete"`,
+		"🗑️",
+		`class="mark"`,
+		"⬇️",
+	} {
+		if !strings.Contains(nested, want) {
+			t.Fatalf("nested listing missing %q: %s", want, nested)
+		}
+	}
+}
+
+func TestHTMLCubbyErrors(t *testing.T) {
+	s, st, dir := testServer(t)
+	c := linkedSession(t, s, st, "alice")
+	outside := filepath.Join(dir, "outside")
+	if err := os.Mkdir(outside, 0770); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "users", "alice", "out")); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/home/", nil)
+	req.AddCookie(c)
+	rr := do(s, req)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "🔗") {
+		t.Fatalf("symlink listing: %d %s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/home/out", nil)
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "invalid path") {
+		t.Fatalf("api symlink: %d %s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/home/out", nil)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("html symlink: %d %s", rr.Code, rr.Body.String())
+	}
+	if loc := rr.Header().Get("Location"); loc != "/home/" {
+		t.Fatalf("html symlink location %s", loc)
+	}
+	notice := cookieNamed(rr, s.noticeCookieName())
+	if notice == nil || notice.Value != "not-allowed" {
+		t.Fatalf("html symlink notice cookie %+v", notice)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/home/", nil)
+	req.AddCookie(c)
+	req.AddCookie(notice)
+	rr = do(s, req)
+	body := rr.Body.String()
+	if rr.Code != http.StatusOK || !strings.Contains(body, "That path is not allowed.") {
+		t.Fatalf("html symlink notice: %d %s", rr.Code, body)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/home/", nil)
+	req.AddCookie(c)
+	rr = do(s, req)
+	if strings.Contains(rr.Body.String(), "That path is not allowed.") {
+		t.Fatalf("notice should not survive refresh: %s", rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/home/missing.txt", nil)
+	req.Header.Set("Accept", "text/html")
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/home/" {
+		t.Fatalf("html missing: %d %s", rr.Code, rr.Header().Get("Location"))
+	}
+	notice = cookieNamed(rr, s.noticeCookieName())
+	if notice == nil || notice.Value != "missing" {
+		t.Fatalf("html missing notice cookie %+v", notice)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/home/", nil)
+	req.AddCookie(c)
+	req.AddCookie(notice)
+	rr = do(s, req)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "That file is gone.") {
+		t.Fatalf("html missing notice: %d %s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/home/?err=denied", nil)
+	req.AddCookie(c)
+	rr = do(s, req)
+	if strings.Contains(rr.Body.String(), "Not authorized to open that.") {
+		t.Fatalf("query err should be ignored: %s", rr.Body.String())
+	}
+}
+
+func TestHTMLDownloadMark(t *testing.T) {
+	s, st, dir := testServer(t)
+	c := linkedSession(t, s, st, "alice")
+	if err := os.WriteFile(filepath.Join(dir, "users", "alice", "a.txt"), []byte("x"), 0660); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/home/a.txt", nil)
+	req.Header.Set("Accept", "text/html")
+	req.AddCookie(c)
+	rr := do(s, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("download: %d %s", rr.Code, rr.Body.String())
+	}
+	dl := cookieNamed(rr, s.downloadCookieName())
+	if dl == nil || dl.Value != "a.txt" {
+		t.Fatalf("download cookie %+v", dl)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/home/", nil)
+	req.AddCookie(c)
+	req.AddCookie(dl)
+	rr = do(s, req)
+	body := rr.Body.String()
+	if rr.Code != http.StatusOK || !strings.Contains(body, `class="mark">⬇️`) {
+		t.Fatalf("download mark: %d %s", rr.Code, body)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/home/", nil)
+	req.AddCookie(c)
+	rr = do(s, req)
+	if strings.Contains(rr.Body.String(), `class="mark">⬇️`) {
+		t.Fatalf("mark should not survive refresh: %s", rr.Body.String())
 	}
 }
 
@@ -597,8 +831,33 @@ func TestDeleteFormAndNonEmptyDir(t *testing.T) {
 	req.Header.Set("Origin", "https://stash.test")
 	req.AddCookie(c)
 	rr := do(s, req)
-	if rr.Code != http.StatusConflict {
+	if rr.Code != http.StatusSeeOther {
 		t.Fatalf("non-empty: %d %s", rr.Code, rr.Body.String())
+	}
+	loc := rr.Header().Get("Location")
+	if loc != "/home/" {
+		t.Fatalf("non-empty location %s", loc)
+	}
+	noticeCookie := cookieNamed(rr, s.noticeCookieName())
+	if noticeCookie == nil || noticeCookie.Value != "not-empty" {
+		t.Fatalf("non-empty notice cookie %+v", noticeCookie)
+	}
+	if _, err := os.Stat(sub); err != nil {
+		t.Fatal("non-empty delete removed dir")
+	}
+	req = httptest.NewRequest(http.MethodGet, loc, nil)
+	req.AddCookie(c)
+	req.AddCookie(noticeCookie)
+	rr = do(s, req)
+	notice := rr.Body.String()
+	if rr.Code != http.StatusOK || !strings.Contains(notice, "still has files") {
+		t.Fatalf("non-empty notice: %d %s", rr.Code, notice)
+	}
+	req = httptest.NewRequest(http.MethodGet, loc, nil)
+	req.AddCookie(c)
+	rr = do(s, req)
+	if strings.Contains(rr.Body.String(), "still has files") {
+		t.Fatalf("notice should not survive refresh: %s", rr.Body.String())
 	}
 	if err := os.Remove(filepath.Join(sub, "f.txt")); err != nil {
 		t.Fatal(err)

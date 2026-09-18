@@ -9,6 +9,9 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/nyet/bootstash/internal/store"
 )
@@ -22,8 +25,7 @@ type pageData struct {
 	Title    string
 	Error    string
 	Hint     string
-	Heading  string
-	Parent   string
+	Crumbs   []crumb
 	Action   string
 	CanWrite bool
 	SignedIn bool
@@ -32,12 +34,28 @@ type pageData struct {
 	Entries  []listEntry
 }
 
-type listEntry struct {
+type crumb struct {
 	Name string
 	Href string
-	Size string
-	Date string
-	Dir  bool
+}
+
+type listEntry struct {
+	Name     string
+	Href     string
+	Size     string
+	Date     string
+	DateISO  string
+	Dir      bool
+	Link     bool
+	Mark     bool
+	Action   string
+	CanWrite bool
+}
+
+func (d pageData) Row(e listEntry) listEntry {
+	e.Action = d.Action
+	e.CanWrite = d.CanWrite
+	return e
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, data pageData) {
@@ -93,4 +111,24 @@ func sessionPage(sess *store.Session, data pageData) pageData {
 		}
 	}
 	return data
+}
+
+func formatSize(n int64) string {
+	if n < 1024 {
+		return strconv.FormatInt(n, 10) + " B"
+	}
+	f := float64(n)
+	for _, u := range []string{"KiB", "MiB", "GiB", "TiB"} {
+		f /= 1024
+		if f < 1024 || u == "TiB" {
+			s := strconv.FormatFloat(f, 'f', 1, 64)
+			s = strings.TrimSuffix(s, ".0")
+			return s + " " + u
+		}
+	}
+	return strconv.FormatInt(n, 10) + " B"
+}
+
+func formatDate(t time.Time) string {
+	return t.UTC().Format("2006-01-02 15:04")
 }

@@ -1,39 +1,79 @@
 {{/* Copyright (C) 2026 Nye Liu. SPDX-License-Identifier: GPL-3.0-or-later */}}
-{{define "listing"}}
-{{if .Parent}}
-<nav><a href="{{.Parent}}">Parent directory</a></nav>
-{{end}}
-{{if .Heading}}<h1>{{.Heading}}</h1>{{end}}
+{{define "entry"}}
+<li{{if .Dir}} class="dir"{{end}}>
+<span class="kind" aria-hidden="true">{{if .Link}}🔗{{else if .Dir}}📁{{else}}📄{{end}}</span>
+<span class="named">
+<a class="name" href="{{.Href}}">{{.Name}}{{if .Dir}}/{{end}}</a>
+{{if not .Dir}}<span class="mark"{{if not .Mark}} hidden{{end}}>⬇️</span>{{end}}
+</span>
+<span class="meta">
+<span class="size">{{if not .Dir}}{{.Size}}{{end}}</span>
+<time class="date" datetime="{{.DateISO}}">{{.Date}}</time>
+</span>
 {{if .CanWrite}}
-<form method="post" enctype="multipart/form-data" action="{{.Action}}">
-<label>Upload<br><input type="file" name="file"></label>
-<button type="submit">Upload</button>
-</form>
-<form method="post" action="{{.Action}}">
-<input type="hidden" name="mkdir" value="1">
-<label>New folder<br><input type="text" name="name" required></label>
-<button type="submit">Create</button>
-</form>
-{{end}}
-<table>
-<thead><tr><th>Name</th><th>Size</th><th>Date</th>{{if .CanWrite}}<th></th>{{end}}</tr></thead>
-<tbody>
-{{range .Entries}}
-<tr>
-<td>{{if .Dir}}<a href="{{.Href}}">{{.Name}}/</a>{{else}}<a href="{{.Href}}">{{.Name}}</a>{{end}}</td>
-<td>{{if not .Dir}}{{.Size}}{{end}}</td>
-<td>{{.Date}}</td>
-{{if $.CanWrite}}
-<td>
-<form method="post" action="{{$.Action}}">
+<form class="del" method="post" action="{{.Action}}">
 <input type="hidden" name="delete" value="1">
 <input type="hidden" name="name" value="{{.Name}}">
-<button type="submit">Delete</button>
+<button class="danger" type="submit" aria-label="Delete">🗑️</button>
 </form>
-</td>
 {{end}}
-</tr>
+</li>
 {{end}}
-</tbody>
-</table>
+{{define "listing"}}
+{{if .Crumbs}}
+<nav class="crumbs" aria-label="Folder">
+{{range $i, $c := .Crumbs}}{{if $i}}<span class="sep" aria-hidden="true">/</span>{{end}}{{if $c.Href}}<a href="{{$c.Href}}">{{$c.Name}}</a>{{else}}<span>{{$c.Name}}</span>{{end}}{{end}}
+</nav>
+{{end}}
+{{if .Error}}<p class="err" role="alert">{{.Error}}</p>{{end}}
+{{if or .Entries .CanWrite}}
+<ul class="files">
+{{range .Entries}}{{if .Dir}}{{template "entry" ($.Row .)}}{{end}}{{end}}
+{{if .CanWrite}}
+<li class="add dir">
+<span class="kind" aria-hidden="true">📁</span>
+<form id="mkdir" method="post" action="{{.Action}}">
+<input type="hidden" name="mkdir" value="1">
+<input class="add-field" type="text" name="name" required placeholder="new directory" aria-label="New directory">
+</form>
+<button class="plus" type="submit" form="mkdir" aria-label="Create directory">➕&#xFE0F;</button>
+</li>
+{{end}}
+{{range .Entries}}{{if not .Dir}}{{template "entry" ($.Row .)}}{{end}}{{end}}
+{{if .CanWrite}}
+<li class="add file">
+<span class="kind" aria-hidden="true">📄</span>
+<form id="upload-form" method="post" enctype="multipart/form-data" action="{{.Action}}">
+<input id="upload" type="file" name="file" required>
+<label class="add-field" for="upload" id="upload-label">browse</label>
+</form>
+<button class="plus" type="submit" form="upload-form" aria-label="Upload file">➕&#xFE0F;</button>
+</li>
+{{end}}
+</ul>
+<script>
+(function () {
+  var box = document.getElementById("upload");
+  var label = document.getElementById("upload-label");
+  if (box && label) {
+    box.addEventListener("change", function () {
+      var f = box.files && box.files[0];
+      label.textContent = f ? f.name : "browse";
+    });
+  }
+  var list = document.querySelector(".files");
+  if (!list) return;
+  list.addEventListener("click", function (ev) {
+    var a = ev.target.closest("a.name");
+    if (!a) return;
+    var li = a.closest("li");
+    if (!li || li.classList.contains("dir") || li.classList.contains("add")) return;
+    var mark = li.querySelector(".mark");
+    if (mark) mark.hidden = false;
+  });
+})();
+</script>
+{{else}}
+<p class="empty">Nothing here yet.</p>
+{{end}}
 {{end}}

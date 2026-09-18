@@ -24,6 +24,8 @@ var (
 	ErrEscape = errors.New("path escapes jail")
 	// ErrNotEmpty is a directory that still has children.
 	ErrNotEmpty = errors.New("directory not empty")
+	// ErrNotDir is a path that exists but is not a directory.
+	ErrNotDir = errors.New("not a directory")
 )
 
 const maxSymlinks = 8
@@ -345,7 +347,7 @@ func (r *Root) ReadDirNames(rel string) ([]os.FileInfo, error) {
 		return nil, err
 	}
 	if !st.IsDir() {
-		return nil, fmt.Errorf("not a directory")
+		return nil, ErrNotDir
 	}
 	infos, err := f.Readdir(-1)
 	if err != nil && err != io.EOF {

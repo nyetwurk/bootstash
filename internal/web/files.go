@@ -4,6 +4,7 @@
 package web
 
 import (
+	"errors"
 	"io"
 	"log"
 	"mime"
@@ -12,8 +13,8 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/nyet/bootstash/internal/jail"
@@ -94,11 +95,7 @@ func (s *Server) jailPath(sess *store.Session) (string, error) {
 func (s *Server) serveGet(w http.ResponseWriter, r *http.Request, root *jail.Root, prefix, rel string) {
 	info, err := root.Stat(rel)
 	if err != nil {
-		if jail.IsNotExist(err) {
-			http.NotFound(w, r)
-			return
-		}
-		http.Error(w, "forbidden", http.StatusForbidden)
+		s.cubbyErr(w, r, prefix, rel, err)
 		return
 	}
 	if info.IsDir() {
@@ -111,7 +108,7 @@ func (s *Server) serveGet(w http.ResponseWriter, r *http.Request, root *jail.Roo
 	}
 	f, err := root.Open(rel)
 	if err != nil {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		s.cubbyErr(w, r, prefix, rel, err)
 		return
 	}
 	defer f.Close()
@@ -126,22 +123,29 @@ func (s *Server) serveGet(w http.ResponseWriter, r *http.Request, root *jail.Roo
 	}
 	w.Header().Set("Content-Type", ctype)
 	w.Header().Set("Content-Disposition", disp+"; filename=\""+info.Name()+"\"")
+	if r.Method == http.MethodGet && wantsHTML(r) && disp == "attachment" {
+		s.setDownloadMark(w, rel)
+	}
 	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 }
 
 func (s *Server) serveListing(w http.ResponseWriter, r *http.Request, root *jail.Root, prefix, rel string) {
 	infos, err := root.ReadDirNames(rel)
 	if err != nil {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		s.cubbyErr(w, r, prefix, rel, err)
 		return
 	}
 	sort.Slice(infos, func(i, j int) bool {
+		if infos[i].IsDir() != infos[j].IsDir() {
+			return infos[i].IsDir()
+		}
 		return infos[i].Name() < infos[j].Name()
 	})
 	base := strings.TrimSuffix(prefix+"/"+rel, "/")
 	if rel == "" {
 		base = prefix
 	}
+	marked := s.takeDownloadMark(w, r, rel)
 	var entries []listEntry
 	for _, fi := range infos {
 		name := fi.Name()
@@ -150,30 +154,40 @@ func (s *Server) serveListing(w http.ResponseWriter, r *http.Request, root *jail
 			href += "/"
 		}
 		entries = append(entries, listEntry{
-			Name: name,
-			Href: href,
-			Size: strconv.FormatInt(fi.Size(), 10),
-			Date: fi.ModTime().UTC().Format(time.RFC3339),
-			Dir:  fi.IsDir(),
+			Name:    name,
+			Href:    href,
+			Size:    formatSize(fi.Size()),
+			Date:    formatDate(fi.ModTime()),
+			DateISO: fi.ModTime().UTC().Format(time.RFC3339),
+			Dir:     fi.IsDir(),
+			Link:    fi.Mode()&os.ModeSymlink != 0,
+			Mark:    !fi.IsDir() && name == marked,
 		})
 	}
-	parent := ""
+	heading := "Files"
+	var crumbs []crumb
 	if rel != "" {
-		parent = path.Dir(base)
-		if parent == "." || parent == prefix {
-			parent = prefix + "/"
-		} else if !strings.HasSuffix(parent, "/") {
-			parent += "/"
+		heading = path.Base(rel)
+		crumbs = []crumb{{Name: "Files", Href: prefix + "/"}}
+		acc := ""
+		parts := strings.Split(rel, "/")
+		for i, p := range parts {
+			if p == "" || p == "." {
+				continue
+			}
+			acc = path.Join(acc, p)
+			c := crumb{Name: p}
+			if i < len(parts)-1 {
+				c.Href = prefix + "/" + acc + "/"
+			}
+			crumbs = append(crumbs, c)
 		}
 	}
-	heading := ""
-	if rel != "" {
-		heading = rel
-	}
+	errMsg := s.takeNotice(w, r)
 	s.render(w, "listing", sessionPage(s.session(r), pageData{
 		Title:    heading,
-		Heading:  heading,
-		Parent:   parent,
+		Error:    errMsg,
+		Crumbs:   crumbs,
 		Action:   listingURL(prefix, rel),
 		CanWrite: true,
 		Entries:  entries,
@@ -314,6 +328,11 @@ func (s *Server) serveDelete(w http.ResponseWriter, r *http.Request, root *jail.
 	}
 	if err := root.Remove(rel); err != nil {
 		if err == jail.ErrNotEmpty {
+			if redirect != "" {
+				s.setNotice(w, "not-empty")
+				http.Redirect(w, r, redirect, http.StatusSeeOther)
+				return
+			}
 			http.Error(w, "directory not empty", http.StatusConflict)
 			return
 		}
@@ -341,8 +360,81 @@ func (s *Server) chownRel(root *jail.Root, rel, pamUser string) {
 	}
 }
 
+func downloadNameIn(listingRel, fileRel string) string {
+	fileRel = strings.Trim(fileRel, "/")
+	listingRel = strings.Trim(listingRel, "/")
+	dir := path.Dir(fileRel)
+	if dir == "." {
+		dir = ""
+	}
+	if dir != listingRel {
+		return ""
+	}
+	name := path.Base(fileRel)
+	if name == "." || name == "/" || name == "" {
+		return ""
+	}
+	return name
+}
+
 func listingURL(prefix, rel string) string {
 	return strings.TrimSuffix(prefix+"/"+rel, "/") + "/"
+}
+
+func parentListing(prefix, rel string) string {
+	rel = strings.Trim(rel, "/")
+	parent := path.Dir(rel)
+	if rel == "" || parent == "." || parent == "/" {
+		return prefix + "/"
+	}
+	return listingURL(prefix, parent)
+}
+
+func wantsHTML(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept"), "text/html")
+}
+
+func (s *Server) cubbyErr(w http.ResponseWriter, r *http.Request, prefix, rel string, err error) {
+	if r.Method == http.MethodGet && wantsHTML(r) && strings.Trim(rel, "/") != "" {
+		s.setNotice(w, jailErrKey(err))
+		http.Redirect(w, r, parentListing(prefix, rel), http.StatusSeeOther)
+		return
+	}
+	statusFromJail(w, err)
+}
+
+func listingErrMessage(key string) string {
+	switch key {
+	case "not-empty":
+		return "That folder still has files in it."
+	case "not-allowed":
+		return "That path is not allowed."
+	case "denied":
+		return "Not authorized to open that."
+	case "missing":
+		return "That file is gone."
+	case "not-a-folder":
+		return "That is not a folder."
+	case "failed":
+		return "Could not open that."
+	default:
+		return ""
+	}
+}
+
+func jailErrKey(err error) string {
+	switch {
+	case errors.Is(err, jail.ErrEscape), errors.Is(err, jail.ErrInvalid):
+		return "not-allowed"
+	case errors.Is(err, syscall.EACCES), errors.Is(err, syscall.EPERM):
+		return "denied"
+	case jail.IsNotExist(err):
+		return "missing"
+	case errors.Is(err, jail.ErrNotDir), errors.Is(err, syscall.ENOTDIR):
+		return "not-a-folder"
+	default:
+		return "failed"
+	}
 }
 
 func entryName(name string) (string, bool) {
@@ -358,8 +450,16 @@ func statusFromJail(w http.ResponseWriter, err error) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	if err == jail.ErrEscape || err == jail.ErrInvalid {
+	if errors.Is(err, jail.ErrEscape) || errors.Is(err, jail.ErrInvalid) {
 		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM) {
+		http.Error(w, "not authorized", http.StatusForbidden)
+		return
+	}
+	if errors.Is(err, jail.ErrNotDir) || errors.Is(err, syscall.ENOTDIR) {
+		http.Error(w, "not a directory", http.StatusBadRequest)
 		return
 	}
 	http.Error(w, "forbidden", http.StatusForbidden)
