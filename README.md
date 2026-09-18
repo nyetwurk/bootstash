@@ -35,14 +35,18 @@ must not yield plaintext,” this is the wrong program.
 
 ## Who it is for
 
-Debian hosts that already have **PAM accounts**. The user is a **road
-warrior**: laptop, tablet, or phone away from the usual shell. Typical
-session: reach the daemon → Google sign-in → (once) Linux username +
-password → download bootstrap files. Packaged `TLS=auto` uses Let’s Encrypt
-files on disk (copied into `/etc/bootstash/certs/`) when both PEMs
-exist. `TLS=no` is cleartext (no dest copy; dest PEMs removed; a
-reverse proxy may terminate HTTPS). See
-[`QUICKSTART.md`](QUICKSTART.md). Install is a **public `.deb`**.
+Debian hosts that already have **PAM accounts**. The person using it is
+a **road warrior**: laptop, tablet, or phone, away from the usual
+shell.
+
+Typical first session:
+
+- Reach the daemon
+- Sign in with Google
+- Once: Linux username and password
+- Download bootstrap files
+
+Install is a **public `.deb`**.
 
 ## What you can do
 
@@ -69,7 +73,16 @@ username. Identity is the provider’s `(issuer, sub)`.
 
 One or more binds: an **interface**, a **CIDR** of local addresses,
 **any** / one address, or a **Unix socket** (HTTP only, for a local
-proxy). How to set `BIND`, `PUBLIC_URL`, and TLS:
+proxy).
+
+TLS:
+
+- `TLS=auto` (packaged): HTTPS when both PEMs exist under
+  `/etc/bootstash/certs/` (Let’s Encrypt `live/` copied there)
+- `TLS=no`: cleartext on TCP binds; the hook does not copy `live/`
+  and dest PEMs are removed. A reverse proxy may terminate HTTPS
+
+How to set `BIND`, `PUBLIC_URL`, and TLS:
 [`QUICKSTART.md`](QUICKSTART.md).
 
 ## Your files vs everyone else's
@@ -78,13 +91,17 @@ One data volume (you choose the path):
 
 - `users/<linux-username>/` — only that PAM user
 
-The daemon runs as one service account so it can read those trees. The
-cubby owner can drop files into `users/<their-name>/` from a login
-(`$DATA` is `0751`; parent `users/` is `0711`; the cubby is `2770`
-`you:bootstash`). Ordinary `cp` (not `cp -a`). Do not `chown` to
-`bootstash`. Opening `/home` (or start/SIGHUP) sets group `bootstash`
-and `0640`. Other Linux logins cannot enter your cubby. HTTP refuses
-paths outside your folder.
+The daemon runs as one service account so it can read those trees.
+HTTP refuses paths outside your folder. Other Linux logins cannot
+enter your cubby.
+
+From a login you can drop files into `users/<your-name>/` with
+ordinary `cp` (not `cp -a`). Do not `chown` to `bootstash`.
+
+- `$DATA` is `0751` so you can traverse in
+- Parent `users/` is `0711` so you cannot list other cubbies
+- Your cubby is `2770` `you:bootstash` (new files get group `bootstash`)
+- Opening `/home` (or start/SIGHUP) sets group `bootstash` and `0640`
 
 ## What this is not
 
@@ -104,19 +121,24 @@ Package: `bootstash`. Daemon: `bootstashd`. CLI: `bootstash`
 
 ## Known issues
 
-`/etc/bootstash/certs/` is for **hook-copied Let’s Encrypt** files
-only (`letsencrypt-deploy` → `certs/<name>/`). Do not put your own
-PEMs there: an existing dest dir is treated as wanted, so a later
-`live/<name>` renew can overwrite them. With no Let’s Encrypt
-lineage, that directory may be empty; that is HTTP unless you set
-`TLS_CERT` / `TLS_KEY`.
+`/etc/bootstash/certs/` is hook-managed. `letsencrypt-deploy` copies
+Let’s Encrypt `live/` into `certs/<name>/`. Do not put your own PEMs
+there: an existing dest dir is treated as wanted, so a later
+`live/<name>` renew can overwrite them.
 
-Your own certs: point `TLS_CERT` and `TLS_KEY` at files **outside**
-`certs/` (daemon already skips discovery when both are set). The
-hook may still copy `live/` into `certs/` under `TLS=auto`; unused
-dest keys are readable by `bootstash`. `TLS=no` skips the copy and
-removes dest PEMs. A later rename of the dest (for example
-`/etc/bootstash/lets-encrypt/`) is not in v1.
+With no Let’s Encrypt lineage, `certs/` may be empty. That is HTTP
+unless you set `TLS_CERT` / `TLS_KEY`.
+
+Your own certs:
+
+- Point `TLS_CERT` and `TLS_KEY` at files **outside** `certs/`
+- The daemon skips discovery when both are set
+- Under `TLS=auto`, the hook may still copy `live/` into `certs/`;
+  unused dest keys are readable by `bootstash`
+- `TLS=no` skips the copy and removes dest PEMs
+
+Renaming the dest (for example `/etc/bootstash/lets-encrypt/`) is not
+in v1.
 
 ## License
 

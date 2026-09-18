@@ -1,64 +1,128 @@
 # Quick start
 
-Install the `.deb`. This is the operator recipe. Product and
-expectations: [`README.md`](README.md). Keys and files:
-`bootstash(5)`. Daemon: `bootstashd(8)`. CLI: `bootstash(8)`.
+## First run
+
+`sudo dpkg -i` the `.deb`.
+
+Note the messages it prints about what is still needed.
+
+Edit `/etc/default/bootstash` if `BIND` or the browser URL are not the
+defaults (see below). Then:
+
+```bash
+sudo bootstash check-config
+# or: sudo bootstashd -t
+sudo bootstash provision-google
+sudo systemctl enable --now bootstash
+```
+
+Package configure does not enable the unit. First install without a
+Google client ID stays down. Configure prints what is still needed.
+
+`bootstash provision-google` cannot create the Google OAuth web client on its
+own (`gcloud` has no API for that type).
+
+It prints recommended values for:
+
+- The project
+- The branding screen
+- The Web application client
+- The redirect URI from the loaded config
+
+The printed URI uses `https` when both PEMs exist and `TLS` is not
+`no`. The port comes from `BIND`; finding certs does not move it to
+443.
+
+When the client is created, the console shows:
+
+- a copyable client ID
+- a copyable secret
+- a download link for the client JSON
+
+Pass `-json path`, or with no `-json` it asks for the path to that
+file. It copies the JSON to `/etc/bootstash/oidc-google.json`
+(`0640` `root:bootstash`). You can copy the download there yourself
+under that exact name. The copyable ID and secret are already in the
+file; do not paste them into `/etc/default/bootstash`.
+
+## Config
 
 `/etc/default/bootstash` ships with commented `DATA`, `BIND`,
-`PUBLIC_URL`, and `ADMIN_USERS`. Add other overrides; packaged
-values stay in
-`/usr/lib/bootstash/default-dist` (every key).
-If configure detects a single `live/`
-lineage (or `live/$(hostname -f)`), it inserts commented
-`# CERT_NAME=` and `# PUBLIC_URL=` hints after the file header
-(the URL the daemon would derive). The daemon still derives both
-at runtime unless you uncomment them. If you delete the conffile, `dpkg -i` will not put it back;
-configure restores the packaged pointer from
-`/usr/lib/bootstash/default`, or use `dpkg --force-confmiss -i`.
-Configure does not enable the unit. If the daemon is already
-running it `try-restart`s after cert sync (copy, or dest PEM
-removal when `TLS=no`); if it is down it
-starts only when `bootstash check-config` would pass (same as
-`bootstashd -t`). First install without a Google client id stays
-down. Configure prints what is still needed (daemon not started or
-not enabled on boot, no Google client id, loopback BIND, no copied
-certs unless `TLS=no`).
+`PUBLIC_URL`, and `ADMIN_USERS`. Add only what you need to change.
+Packaged values stay in `/usr/lib/bootstash/default-dist` (every key).
 
-## Listen and origin
+If configure finds a single Let’s Encrypt `live/` lineage, or
+`live/$(hostname -f)`, it inserts commented `# CERT_NAME=` and
+`# PUBLIC_URL=` after the file header. Those hints are the URL the
+daemon would derive. The daemon still derives both at runtime unless
+you uncomment them.
+
+If you delete the conffile, `dpkg -i` will not put it back. Configure
+restores the packaged pointer from `/usr/lib/bootstash/default`, or
+use `dpkg --force-confmiss -i`.
+
+## Listen
 
 Packaged bind is `127.0.0.1:8080`. Set `BIND` before another host can
-reach you (interface, CIDR, address, `*`, or `unix://`).
+reach you:
 
-`PUBLIC_URL` is the URL the **browser** uses for the OIDC
-callback (Google never connects to you). When unset it is
-`CERT_NAME` (see TLS) plus the first listen port, else
-`hostname -f`. Packaged `TLS=auto`: `https` if cert and key are
-present. `TLS=no` forces HTTP.
+- interface
+- CIDR of local addresses
+- one address, or `*` (any)
+- `unix://` (HTTP only, for a local proxy)
+
+Interface binds retry if the NIC is late.
+
+## Browser URL
+
+`PUBLIC_URL` is the URL the **browser** uses for the OIDC callback.
+Google never connects to you.
+
+When unset:
+
+- `CERT_NAME` (see TLS) plus the first listen port, or
+- `hostname -f` if there is no `CERT_NAME`
+
+Packaged `TLS=auto` uses `https` if cert and key are present. `TLS=no`
+forces HTTP.
+
 That name must resolve and reach this daemon. If you bind only a
 tunnel NIC but the origin is a public `:443` vhost, the callback
 misses.
 
 ## TLS and Let’s Encrypt
 
-Not an ACME client. Default files, when both exist:
+Not an ACME client. It uses certs already on disk. Default files,
+when both exist:
 
 - `/etc/bootstash/certs/<name>/fullchain.pem`
 - `/etc/bootstash/certs/<name>/privkey.pem`
 
-`name` is `CERT_NAME`. If that is unset, the hook picks
-`live/$(hostname -f)` or the **only** `live/` lineage (it will not
-guess when there are several). After the copy, the daemon uses that
-directory as `CERT_NAME` and defaults `PUBLIC_URL` from it. Do
-**not** point `TLS_CERT` / `TLS_KEY` at `/etc/letsencrypt/live`.
+`name` is `CERT_NAME`. If that is unset, the hook picks:
+
+- `live/$(hostname -f)`, or
+- the **only** `live/` lineage (it will not guess when there are several)
+
+After the copy, the daemon uses that directory as `CERT_NAME` and
+defaults `PUBLIC_URL` from it.
+
+Do **not** point `TLS_CERT` / `TLS_KEY` at `/etc/letsencrypt/live`.
 Treat `certs/` as hook-managed only (see README Known issues).
-Packaged `TLS=auto` uses those PEMs when both exist. `TLS=no` keeps
-TCP binds on HTTP. The deploy hook then does **not** copy
-`live/` into `/etc/bootstash/certs` and removes dest PEMs there so
-`User=bootstash` does not hold an unused private key. `live/` is
-untouched. A reverse proxy can terminate TLS; write `PUBLIC_URL` as
-the browser URL. After setting `TLS=no`, run
-`letsencrypt-deploy sync` (or wait for the next renew) to drop dest
-keys already copied.
+`ssl-cert` (`Recommends`) is only for `/etc/ssl/private`. Let’s
+Encrypt files belong under `/etc/bootstash/certs/`.
+
+Packaged `TLS=auto` uses those PEMs when both exist.
+
+`TLS=no` keeps TCP binds on HTTP:
+
+- The hook does **not** copy `live/` into `/etc/bootstash/certs`
+- Dest PEMs there are removed so `User=bootstash` does not hold an
+  unused private key
+- `live/` is untouched
+- A reverse proxy can terminate TLS; write `PUBLIC_URL` as the
+  browser URL
+- After setting `TLS=no`, run `letsencrypt-deploy sync` (or wait for
+  the next renew) to drop dest keys already copied
 
 The packaged hook is `/usr/lib/bootstash/letsencrypt-deploy` (also
 `/etc/letsencrypt/renewal-hooks/deploy/bootstash`). It copies **that
@@ -85,46 +149,54 @@ RENEWED_DOMAINS=stash.example \
 Then `systemctl reload bootstash` if the daemon is already up (the
 hook does that when the service is active).
 
-`ssl-cert` (`Recommends`) is only for `/etc/ssl/private`. Let’s
-Encrypt files belong under `/etc/bootstash/certs/`.
-
-## First run
-
-```
-# /etc/default/bootstash — BIND and origin if they are not the defaults
-sudo bootstash check-config
-# or: sudo bootstashd -t
-sudo bootstash provision-google
-sudo systemctl enable --now bootstash
-```
-
-`provision-google` cannot create the Google OAuth web client
-(`gcloud` has no API for that type) and does not edit
-`/etc/default/bootstash`. It prints recommended values for the
-project, branding screen, and Web application client, plus the
-redirect URI from the loaded config (`https` if the daemon would
-speak HTTPS: PEMs present and not `TLS=no`; BIND port stays). After
-you download the client JSON from the console,
-it copies that file to `/etc/bootstash/oidc-google.json` (`-json` or a
-prompted path).
+## Users and files
 
 To see who is linked: `sudo bootstash links` (PAM name, issuer, `sub`).
 To drop a user’s Google→Linux map (they must link again; the cubby
 stays): `sudo bootstash unlink alice`.
 
 After link, that Unix user can `cp` into
-`/var/lib/bootstash/users/<name>/`. Keep ownership as yourself;
-the setgid cubby (`2770` you:`bootstash`) sets group `bootstash` on
-new files so the daemon can read them. Use ordinary `cp`, not
-`cp -a` (that can keep another group). Opening a file under `/home`
-(or start/SIGHUP) `chgrp`s to `bootstash` and sets `0640` (so
-`0644`/`0600` copies work). Do not `chown` them to `bootstash` and
-do not add yourself to that group. Other logins cannot list `users/`
-or enter someone else’s cubby.
+`/var/lib/bootstash/users/<name>/`. Keep ownership as yourself.
 
-Interface binds retry if the NIC is late. `systemctl reload` is
-SIGHUP (operator file, secrets, CIDR/interface binds, cubby modes;
-certs when TLS is on). Logs go to the journal.
+- Use ordinary `cp`, not `cp -a` (`-a` can keep another group)
+- The cubby is `2770` `you:bootstash`; new files get group `bootstash`
+  so the daemon can read them
+- Opening a file under `/home` (or start/SIGHUP) sets group `bootstash`
+  and `0640` (so `0644`/`0600` copies work)
+- Do not `chown` files to `bootstash`
+- Do not add yourself to the `bootstash` group
+- Other logins cannot list `users/` or enter someone else’s cubby
+
+## Reload and logs
+
+`systemctl reload` is SIGHUP:
+
+- operator file
+- secrets
+- CIDR/interface binds
+- cubby modes
+- certs when TLS is on
+
+Logs go to the journal.
+
+## What the package does on install
+
+Configure does not enable the unit.
+
+- If the daemon is already running, it `try-restart`s after cert sync
+  (copy, or dest PEM removal when `TLS=no`)
+- If it is down, it starts only when `bootstash check-config` would
+  pass (same as `bootstashd -t`)
+- First install without a Google client id stays down
+- Configure prints what is still needed: daemon not started or not
+  enabled on boot, no Google client id, loopback BIND, no copied
+  certs unless `TLS=no`
+
+## `man` pages
+
+- Config keys: `man 5 bootstash`
+- Daemon: `man 8 bootstashd`
+- CLI: `man 8 bootstash`
 
 ## See also
 
