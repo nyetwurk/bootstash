@@ -1,8 +1,9 @@
 # Building
 
 How to compile bootstash and build the `.deb`. Changing behavior:
-[`DEVELOPERS.md`](DEVELOPERS.md). Operators: [`README.md`](README.md)
-and the man pages. Tags and GitHub releases: [`RELEASE.md`](RELEASE.md).
+[`DEVELOPERS.md`](DEVELOPERS.md). Operators: [`README.md`](README.md),
+[`QUICKSTART.md`](QUICKSTART.md), and the man pages. Tags and GitHub
+releases: [`RELEASE.md`](RELEASE.md).
 
 ## Make targets
 

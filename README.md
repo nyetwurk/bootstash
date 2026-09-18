@@ -9,6 +9,9 @@ It is not a secrets engine (no unseal, leases, or KV API). Bind wherever
 you want (loopback, LAN, a tunnel NIC, later a public address). v1 auth
 is Google OIDC linked to PAM; other issuers can be added later.
 
+**Install and first run:** [`QUICKSTART.md`](QUICKSTART.md). Config
+keys: `bootstash(5)`.
+
 ## Expectations
 
 This is a **convenience cubby**, not a hardened credential store. Do not
@@ -35,7 +38,8 @@ must not yield plaintext,” this is the wrong program.
 Debian hosts that already have **PAM accounts**. Typical session: reach
 the daemon → Google sign-in → (once) Linux username + password →
 download bootstrap files. TLS is either on a reverse proxy or Let’s
-Encrypt files on disk. Install is a **public `.deb`**.
+Encrypt files on disk (copied into `/etc/bootstash/certs/`; see
+[`QUICKSTART.md`](QUICKSTART.md)). Install is a **public `.deb`**.
 
 ## What you can do
 
@@ -59,23 +63,10 @@ username. Identity is the provider’s `(issuer, sub)`.
 
 ## Listen
 
-One or more binds:
-
-- **Interface** — `eth0`, `wg0`, `tun0`, …
-- **CIDR** — each local address in a prefix
-- **Any** / **one address** / **Unix socket** (HTTP only, for a local proxy)
-
-Each bind is HTTP (proxy terminates TLS) or HTTPS (operator-supplied
-`fullchain.pem` / `privkey.pem`). Not an ACME client. **SIGHUP** /
-`systemctl reload` rereads certs, `/etc/default/bootstash`,
-`/etc/bootstash/oidc-google`, and interface/CIDR binds.
-
-`PUBLIC_ORIGIN` is the URL the **phone’s browser** uses for the OIDC
-callback (Google never connects to you). That name must resolve and reach
-this daemon from the client. If you bind only a tunnel NIC but the origin
-is a public `:443` vhost, the callback misses. Point the origin at where
-the daemon actually listens (for example a VPN-only hostname), or bind
-where that origin lands.
+One or more binds: an **interface**, a **CIDR** of local addresses,
+**any** / one address, or a **Unix socket** (HTTP only, for a local
+proxy). How to set `BIND`, `PUBLIC_ORIGIN`, and TLS:
+[`QUICKSTART.md`](QUICKSTART.md).
 
 ## Your files vs everyone else's
 
@@ -99,29 +90,6 @@ paths outside your folder and `shared/`.
 - Not a long-term archive or backup (see expiration, post-v1)
 - Not a public anonymous download site
 - Not a reason to auto-create Unix users
-
-## Operations (short)
-
-Install the `.deb`. Operator config, binds, TLS, and keys are in
-`bootstash(5)`. The daemon is `bootstashd(8)`; the CLI is
-`bootstash(8)`.
-
-`/etc/default/bootstash` is **empty**; add only overrides (origin,
-`BIND`). Then:
-
-```
-bootstash check-config
-# or: bootstashd -t
-bootstash provision-google
-systemctl enable --now bootstash
-```
-
-`provision-google` cannot create the Google OAuth client (`gcloud` has
-no API for that web client type) and does not edit
-`/etc/default/bootstash`. Interface binds retry if the NIC is late.
-`systemctl reload` is SIGHUP. Logs go to the journal. The service user
-is in group `ssl-cert` when that package is installed (`Recommends:
-ssl-cert`).
 
 Package: `bootstash`. Daemon: `bootstashd`. CLI: `bootstash`. Changing
 the code: [`DEVELOPERS.md`](DEVELOPERS.md). Building:

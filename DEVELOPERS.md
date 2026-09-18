@@ -1,7 +1,8 @@
 # Developers
 
-For people and agents changing bootstash. Operators use **README.md**
-and the man pages (`bootstashd(8)`, `bootstash(8)`, `bootstash(5)`).
+For people and agents changing bootstash. Operators use **README.md**,
+[`QUICKSTART.md`](QUICKSTART.md), and the man pages (`bootstashd(8)`,
+`bootstash(8)`, `bootstash(5)`).
 Building the binaries and `.deb`: [`BUILDING.md`](BUILDING.md). This
 is not a public Go API.
 
