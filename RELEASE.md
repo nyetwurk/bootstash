@@ -17,12 +17,14 @@ release attaches the `.deb`, not a zip of binaries.
 Only `vX.Y.Z` (release) and `vX.Y.Z-rcN` (prerelease). Lightweight is
 fine. No `~` in tags.
 
-- **`v1.1.1`** → full release. Immutable. Notes: last full release →
-  this tag (RCs ignored), or first commit if none.
-- **`v1.1.1-rc1`** → prerelease. May be force-moved and force-pushed.
-  Notes: last full or RC tag → this tag, or first commit if none. Same
-  `rcN` is the same Debian version; bump `N` if installed testers must
-  see an upgrade.
+- **`v1.1.1`** → published full release (Latest). Immutable git tag.
+  Notes: last full release → this tag (RCs ignored), or first commit
+  if none. Not a GitHub draft.
+- **`v1.1.1-rc1`** → published prerelease (not Latest). May be
+  force-moved and force-pushed. Notes: last full or RC tag → this
+  tag, or first commit if none. Same `rcN` is the same Debian
+  version; bump `N` if installed testers must see an upgrade. Not a
+  GitHub draft.
 
 Git tag `-rc` maps to Debian `~rc` (`v1.2.3-rc1` → `1.2.3~rc1`). A
 release tag `v1.2.3` is Debian `1.2.3`. Untagged builds are
@@ -51,8 +53,9 @@ set. GitHub uses the markdown body in `cliff.toml`.
 - **Conventional commits**: grouped by type; see `commit_parsers` in
   `cliff.toml`
 - **Tag pattern**: `vX.Y.Z` and `vX.Y.Z-rcN`
-- **CI**: `scripts/release-notes.sh github`. Full releases use
-  `--ignore-tags` for RC tags; RC releases include RCs
+- **CI**: `scripts/release-notes.sh github`. Full releases pass
+  `--tag-pattern` so only `vX.Y.Z` tags bound the range (RCs are
+  not version boundaries). RC releases keep RC tags as boundaries
 
 ```bash
 sh scripts/release-notes.sh github

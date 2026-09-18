@@ -17,7 +17,10 @@ usage() {
 [ "${1:-}" = github ] || [ "${1:-}" = debian ] || usage
 mode=$1
 ver=$(sh "$root/scripts/deb-version.sh")
-rc_ignore='v[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+'
+# Full releases: only vX.Y.Z are version boundaries. --ignore-tags with
+# --latest/--current still ranges from the previous tag (an RC) and only
+# rewrites previous.version in the compare URL.
+release_tags='^v[0-9]+\.[0-9]+\.[0-9]+$'
 in_git=0
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 && in_git=1
 
@@ -44,9 +47,9 @@ github_notes() {
 		exit 1
 	fi
 	if is_release "$tag"; then
-		git-cliff --latest --strip header --ignore-tags "$rc_ignore"
+		git-cliff --current --strip header --tag-pattern "$release_tags"
 	elif is_rc "$tag"; then
-		git-cliff --latest --strip header
+		git-cliff --current --strip header
 	else
 		git-cliff --unreleased --strip header
 	fi

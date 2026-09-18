@@ -69,7 +69,9 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           body_path: release-notes.md
+          draft: false
           prerelease: ${{ contains(github.ref_name, '-rc') }}
+          make_latest: ${{ !contains(github.ref_name, '-rc') }}
           files: |
             artifacts/*.deb
             artifacts/*.buildinfo
