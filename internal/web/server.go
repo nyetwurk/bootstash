@@ -129,7 +129,6 @@ func ensureLayout(data string) error {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	r = s.applyForwarded(r)
 	switch {
 	case r.URL.Path == "/":
 		s.handleRoot(w, r)
@@ -148,19 +147,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
-}
-
-func (s *Server) applyForwarded(r *http.Request) *http.Request {
-	if r.TLS != nil {
-		return r
-	}
-	if p := r.Header.Get("X-Forwarded-Proto"); p != "" {
-		r.URL.Scheme = p
-	}
-	if h := r.Header.Get("X-Forwarded-Host"); h != "" {
-		r.Host = h
-	}
-	return r
 }
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {

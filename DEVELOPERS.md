@@ -92,9 +92,10 @@ After cert sync (copy, or dest PEM removal when `TLS=no`) it
 `bootstash check-config` would pass (same as `bootstashd -t`).
 First install without OIDC stays down.
 
-Honor `X-Forwarded-Proto` / `X-Forwarded-Host` on requests that are
-not already TLS (ignored when the socket is HTTPS). v1 does not
-check a trusted hop.
+Do not rewrite the request from `X-Forwarded-Proto` /
+`X-Forwarded-Host`. Browser origin is `PUBLIC_URL` (OIDC, CSRF,
+cookies). A reverse proxy must set `PUBLIC_URL` to the URL the
+phone uses; `Host` on the backend socket does not matter.
 
 ## Bind
 
