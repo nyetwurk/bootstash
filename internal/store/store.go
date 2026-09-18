@@ -9,8 +9,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -166,6 +168,24 @@ func (s *Store) LookupLink(iss, sub string) (string, bool, error) {
 	return "", false, nil
 }
 
+// ListLinks returns OIDC→PAM mappings. Rows with an empty PAM name are omitted.
+func (s *Store) ListLinks() ([]Link, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	lf, err := s.readLinks()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Link, 0, len(lf.Links))
+	for _, l := range lf.Links {
+		if l.PAMUser == "" {
+			continue
+		}
+		out = append(out, l)
+	}
+	return out, nil
+}
+
 // LinkedPAMUsers returns distinct PAM names from the link table.
 func (s *Store) LinkedPAMUsers() ([]string, error) {
 	s.mu.Lock()
@@ -228,6 +248,76 @@ func (s *Store) DeleteLink(iss, sub string) error {
 	}
 	lf.Links = out
 	return s.writeLinks(lf)
+}
+
+// UnlinkPAM drops every (issuer, sub) mapped to pam and clears PAMUser
+// on matching sessions. The cubby on disk is left alone.
+func (s *Store) UnlinkPAM(pam string) ([]Link, int, error) {
+	if pam == "" {
+		return nil, 0, os.ErrInvalid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	lf, err := s.readLinks()
+	if err != nil {
+		return nil, 0, err
+	}
+	var removed []Link
+	out := lf.Links[:0]
+	for _, l := range lf.Links {
+		if l.PAMUser == pam {
+			removed = append(removed, l)
+			continue
+		}
+		out = append(out, l)
+	}
+	lf.Links = out
+	if err := s.writeLinks(lf); err != nil {
+		return nil, 0, err
+	}
+	n, err := s.clearSessionPAMLocked(pam, removed)
+	return removed, n, err
+}
+
+func (s *Store) clearSessionPAMLocked(pam string, links []Link) (int, error) {
+	type key struct{ iss, sub string }
+	want := make(map[key]struct{}, len(links))
+	for _, l := range links {
+		want[key{l.Issuer, l.Subject}] = struct{}{}
+	}
+	ents, err := os.ReadDir(s.dir)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, e := range ents {
+		name := e.Name()
+		if !strings.HasPrefix(name, "sessions-") || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		path := filepath.Join(s.dir, name)
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return n, err
+		}
+		var sess Session
+		if err := json.Unmarshal(b, &sess); err != nil {
+			return n, fmt.Errorf("session %s: %w", name, err)
+		}
+		_, subj := want[key{sess.Iss, sess.Sub}]
+		if sess.PAMUser != pam && !subj {
+			continue
+		}
+		if sess.PAMUser == "" {
+			continue
+		}
+		sess.PAMUser = ""
+		if err := s.saveSession(&sess); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
 }
 
 func (s *Store) readLinks() (*linkFile, error) {

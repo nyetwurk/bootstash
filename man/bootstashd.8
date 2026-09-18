@@ -39,8 +39,10 @@ user
 The daemon refuses to start until
 .B PUBLIC_URL
 is set or can be derived from
+.B CERT_NAME
+(or
 .B hostname \-f
-and the first TCP
+if none) and the first TCP
 .B BIND
 port, and
 .B OIDC_GOOGLE_CLIENT_ID
@@ -55,6 +57,11 @@ is a setuid helper
 .BR PATH ).
 Operators do not run it. Do not set systemd
 .B NoNewPrivileges= .
+An operator drops that map with
+.B bootstash unlink
+.RB ( bootstash (8));
+there is no HTTP
+.BR /unlink .
 .SH OPTIONS
 .TP
 .BR \-V ", " \-\-version

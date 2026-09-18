@@ -138,8 +138,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleCallback(w, r)
 	case r.URL.Path == "/link":
 		s.handleLink(w, r)
-	case r.URL.Path == "/unlink":
-		s.handleUnlink(w, r)
 	case strings.HasPrefix(r.URL.Path, "/home"):
 		s.handleFiles(w, r)
 	case strings.HasPrefix(r.URL.Path, "/static/"):

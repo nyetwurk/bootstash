@@ -60,9 +60,9 @@ application client, download JSON) from the loaded origin.
 SIGHUP re-reads all three; on parse failure **keep the last good
 config**. Same for a bad TLS pair (keep the previous cert).
 
-If `CERT_NAME` is unset, the hook (root, can read `live/`) chooses
-one: operator `CERT_NAME`, `PUBLIC_URL` host, `live/$(hostname
--f)`, or the only `live/` lineage. It copies that one directory
+The hook (root, can read `live/`) chooses one lineage, in order:
+operator `CERT_NAME`, `PUBLIC_URL` host, `live/$(hostname -f)`, or
+the only `live/` lineage. It copies that one directory
 unless `TLS=no` (then it removes dest PEMs under `certs/`). It may
 insert commented `# CERT_NAME=` and `# PUBLIC_URL=`
 hints after the operator-file header (`hostname -f` or only
@@ -79,7 +79,7 @@ alias. Operators do not cron the hook.
 ## Process
 
 `bootstashd` is `/usr/sbin/bootstashd`. CLI is `/usr/sbin/bootstash`
-(no PAM, no HTTP). systemd: `Type=notify`, `User=bootstash`,
+(no PAM, no HTTP; `links` / `unlink` use `$DATA/state`). systemd: `Type=notify`, `User=bootstash`,
 `SupplementaryGroups=ssl-cert`, `AmbientCapabilities` for bind /
 `SO_BINDTODEVICE` / `CAP_CHOWN` / `CAP_FSETID` / `CAP_FOWNER`
 (`chown` otherwise drops cubby setgid). Do not set `NoNewPrivileges=` (the
@@ -136,8 +136,10 @@ directory is 409. Do not serve `state/`. CSRF (`Origin` or
 `Sec-Fetch-Site` vs `PUBLIC_URL`) on every state-changing request.
 New HTTP files `0660`, dirs `0770`.
 
-Routes: `/login`, `/oidc/callback`, `/link`, `/unlink`, `/home/`.
+Routes: `/login`, `/oidc/callback`, `/link`, `/home/`.
 Unlinked sessions only reach login, callback, and `/link`.
+v1 link table is `bootstash links` and `bootstash unlink USER`
+(operator access to `$DATA/state`), not HTTP.
 HTML is a few templates, large targets (laptop, tablet, or phone),
 packaged `:root` + `prefers-color-scheme`. No SPA, no second desktop
 UI, no theme picker.
@@ -165,7 +167,12 @@ to at most one PAM user; one PAM user may have several subjects.
 client JSON. It does **not** create the Google web client
 (`gcloud` cannot). It does not create Unix users.
 
+`bootstash links` prints `user issuer sub` (not email).
+`bootstash unlink USER` drops every `(issuer, sub)` mapped to that
+PAM name and clears `pam_user` on those sessions. The cubby stays.
+Not an `ADMIN_USERS` HTTP power.
+
 ## Tests that matter
 
 Jail, Alice/Bob, CSRF, oversize, unlinked cannot read trees, Range,
-bad PAM, DELETE, cubby `0711`/`2770`/`0640`.
+bad PAM, DELETE, cubby `0711`/`2770`/`0640`, `links` / `unlink` PAM map.

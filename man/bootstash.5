@@ -291,7 +291,13 @@ Group for Unix sockets. Default
 .B ADMIN_USERS
 Comma- or space-separated PAM usernames treated as operators (the
 admin seam). Default empty: nobody. SIGHUP re-reads the list. v1
-grants no extra HTTP powers; later admin routes will use this list.
+grants no extra HTTP powers. Listing or dropping a PAM link is
+.B bootstash links
+/
+.B bootstash unlink
+(access to
+.IR $DATA/state ),
+not this list. Later admin HTTP routes will use this list.
 Not a Unix group and not an application user table.
 .SH FILES
 .TP

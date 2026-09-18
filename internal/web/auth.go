@@ -135,27 +135,6 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleUnlink(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if !s.requireCSRF(w, r) {
-		return
-	}
-	sess := s.session(r)
-	if sess == nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
-		return
-	}
-	pam := sess.PAMUser
-	_ = s.store.DeleteLink(sess.Iss, sess.Sub)
-	sess.PAMUser = ""
-	_ = s.store.SaveSession(sess)
-	log.Printf("unlink pam=%s sub=%s from %s", pam, sess.Sub, r.RemoteAddr)
-	http.Redirect(w, r, "/link", http.StatusFound)
-}
-
 // fixCubbies reapplies 2770 user:bootstash on existing cubbies and
 // linked PAM names. Same caps as /link (CAP_CHOWN / CAP_FSETID /
 // CAP_FOWNER); not limited to link time.

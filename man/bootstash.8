@@ -10,7 +10,24 @@ bootstash \- operator tools for bootstashd
 .PP
 .B bootstash
 \fBprovision-google\fR
-[\fIoptions\fR]
+[\fB\-config\fR \fIpath\fR]
+[\fB\-secrets\fR \fIpath\fR]
+[\fB\-origin\fR \fIurl\fR]
+[\fB\-project\fR \fIid\fR]
+[\fB\-json\fR \fIpath\fR]
+.PP
+.B bootstash
+\fBlinks\fR
+[\fB\-defaults\fR \fIpath\fR]
+[\fB\-config\fR \fIpath\fR]
+[\fB\-secrets\fR \fIpath\fR]
+.PP
+.B bootstash
+\fBunlink\fR
+[\fB\-defaults\fR \fIpath\fR]
+[\fB\-config\fR \fIpath\fR]
+[\fB\-secrets\fR \fIpath\fR]
+.I user
 .PP
 .B bootstash
 [\fB\-\-version\fR]
@@ -18,11 +35,6 @@ bootstash \- operator tools for bootstashd
 .B bootstash
 is the operator CLI for the bootstash daemon. It does not serve HTTP or
 call PAM.
-.B provision-google
-writes Google OIDC client keys into
-.IR /etc/bootstash/oidc-google.json ;
-it does not create the Google OAuth web client and it does not edit
-.IR /etc/default/bootstash .
 .SH COMMANDS
 .TP
 .B check-config
@@ -39,12 +51,37 @@ interfaces are not an error here). Same as
 .B bootstashd \-t .
 .TP
 .B provision-google
-Print a four-step Google console recipe with a recommended
-value at each step, then install the Web application
-client JSON the console downloads as
+Print a four-step Google console recipe (project, branding,
+Web application client, download JSON) with a recommended
+value at each step, including the exact OIDC redirect URI
+.RB ( $PUBLIC_URL/oidc/callback ).
+It says whether that URI is
+.B https
+(daemon would speak HTTPS: PEMs and not
+.BR TLS=no ;
+BIND port stays) or
+.B http
+(no certs, or
+.BR TLS=no ),
+and that finding certs does not move
+.B BIND
+to 443.
+Then install the Web application client JSON the console
+downloads as
 .IR /etc/bootstash/oidc-google.json
-.RB ( \-json
+.RB ( 0640
+.BR root:bootstash ;
+.B \-json
 or a prompted path).
+That file is the console
+.B Download JSON
+object
+.RB ( web.client_id
+/
+.BR web.client_secret ).
+Desktop
+.RB ( installed )
+JSON is rejected.
 Reads
 .B PUBLIC_URL
 from
@@ -52,6 +89,8 @@ from
 (or
 .BR \-origin ).
 If unset, the same
+.B CERT_NAME
+or
 .B hostname \-f
 plus listen-port default as
 .BR bootstashd
@@ -59,8 +98,58 @@ is used.
 Needs root (or
 .BR sudo )
 to write that file; it does not write TLS certs (the Let’s Encrypt
-hook does).
-It does not create the Google OAuth web client.
+hook does) and does not edit
+.IR /etc/default/bootstash .
+It does
+.B not
+create the Google OAuth web client
+.RB ( gcloud
+has no API for that type).
+Consent / branding is once per GCP project.
+One web client per
+.BR PUBLIC_URL .
+If
+.B gcloud
+is on
+.BR PATH ,
+the current project id is used for console links.
+It does not create Unix users.
+.TP
+.B links
+Print each OIDC→PAM map as
+.B user issuer sub
+(one row per subject).
+Needs read access to
+.I $DATA/state
+(usually
+.BR sudo ).
+Empty table: no rows, exit 0.
+Email is not a column.
+.B ADMIN_USERS
+does not grant this.
+.TP
+.B unlink
+Drop every
+.B (issuer, sub)
+mapped to
+.I user
+in
+.I $DATA/state/links.json
+and clear
+.B pam_user
+on those sessions.
+The next Google sign-in for those subjects must
+.B POST /link
+again.
+Does not delete the cubby.
+v1 has no HTTP
+.BR /unlink .
+.B ADMIN_USERS
+does not grant this; write access to
+.I $DATA/state
+does (usually
+.BR sudo ).
+Does not call PAM and does not create or delete Unix users.
 .TP
 .B version
 Print the version from
@@ -71,13 +160,48 @@ Print the version from
 are aliases).
 .SH OPTIONS
 .TP
+.BI \-defaults " path"
+Dist defaults. Default:
+.IR /usr/lib/bootstash/default-dist .
+Used by
+.BR check-config ,
+.BR links ,
+and
+.BR unlink .
+.TP
 .BI \-config " path"
-Operator config to read. Default:
+Operator config. Default:
 .IR /etc/default/bootstash .
 .TP
 .BI \-secrets " path"
 OIDC client secrets file. Default:
 .IR /etc/bootstash/oidc-google.json .
+.B provision-google
+writes it;
+.B links
+and
+.B unlink
+do not use OIDC keys.
+.TP
+.BI \-origin " url"
+.B PUBLIC_URL
+for
+.B provision-google
+when it is not already in the operator file.
+.TP
+.BI \-project " id"
+GCP project id for
+.B provision-google
+console URLs when
+.B gcloud
+has none.
+.TP
+.BI \-json " path"
+Downloaded Web application client JSON for
+.BR provision-google .
+Use
+.B \-
+to read stdin.
 .SH SEE ALSO
 .BR bootstashd (8),
 .BR bootstash (5),

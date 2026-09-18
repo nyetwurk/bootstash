@@ -287,6 +287,15 @@ func TestUnlinkedCannotRead(t *testing.T) {
 	}
 }
 
+func TestUnlinkHTTPGone(t *testing.T) {
+	s, _, _ := testServer(t)
+	req := httptest.NewRequest(http.MethodPost, "/unlink", nil)
+	rr := do(s, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("POST /unlink => %d", rr.Code)
+	}
+}
+
 func TestRange(t *testing.T) {
 	s, st, dir := testServer(t)
 	c := linkedSession(t, s, st, "alice")

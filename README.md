@@ -57,8 +57,9 @@ reverse proxy may terminate HTTPS). See
 - Later: **expiration** of HTTP-uploaded kit files so the tree does not
   accumulate forever
 
-Later visits only need Google. The Linux password is not used again until
-you unlink or re-link.
+Later visits only need Google. The Linux password is not used again
+until an operator runs `bootstash unlink` (that user’s subjects must
+link again).
 
 Your Google email is not a folder name. Folders follow the linked Linux
 username. Identity is the provider’s `(issuer, sub)`.
@@ -96,9 +97,9 @@ paths outside your folder.
 - Not a public anonymous download site
 - Not a reason to auto-create Unix users
 
-Package: `bootstash`. Daemon: `bootstashd`. CLI: `bootstash`. Changing
-the code: [`DEVELOPERS.md`](DEVELOPERS.md). Building:
-[`BUILDING.md`](BUILDING.md).
+Package: `bootstash`. Daemon: `bootstashd`. CLI: `bootstash`
+(`provision-google`, `links`, `unlink`). Changing the code:
+[`DEVELOPERS.md`](DEVELOPERS.md). Building: [`BUILDING.md`](BUILDING.md).
 
 ## Known issues
 
