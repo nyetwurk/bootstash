@@ -101,6 +101,22 @@ Package: `bootstash`. Daemon: `bootstashd`. CLI: `bootstash`. Changing
 the code: [`DEVELOPERS.md`](DEVELOPERS.md). Building:
 [`BUILDING.md`](BUILDING.md).
 
+## Known issues
+
+`/etc/bootstash/certs/` is for **hook-copied Let’s Encrypt** files
+only (`letsencrypt-deploy` → `certs/<name>/`). Do not put your own
+PEMs there: an existing dest dir is treated as wanted, so a later
+`live/<name>` renew can overwrite them. With no Let’s Encrypt
+lineage, that directory may be empty; that is HTTP unless you set
+`TLS_CERT` / `TLS_KEY`.
+
+Your own certs: point `TLS_CERT` and `TLS_KEY` at files **outside**
+`certs/` (daemon already skips discovery when both are set). The
+hook may still copy `live/` into `certs/` under `TLS=auto`; unused
+dest keys are readable by `bootstash`. `TLS=no` skips the copy and
+removes dest PEMs. A later rename of the dest (for example
+`/etc/bootstash/lets-encrypt/`) is not in v1.
+
 ## License
 
 Copyright (C) 2026 Nye Liu. GPL-3.0-or-later. See

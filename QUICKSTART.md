@@ -50,6 +50,7 @@ Not an ACME client. Default files, when both exist:
 guess when there are several). After the copy, the daemon uses that
 directory as `CERT_NAME` and defaults `PUBLIC_URL` from it. Do
 **not** point `TLS_CERT` / `TLS_KEY` at `/etc/letsencrypt/live`.
+Treat `certs/` as hook-managed only (see README Known issues).
 Packaged `TLS=auto` uses those PEMs when both exist. `TLS=no` keeps
 TCP binds on HTTP. The deploy hook then does **not** copy
 `live/` into `/etc/bootstash/certs` and removes dest PEMs there so
