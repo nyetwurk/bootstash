@@ -91,7 +91,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "usage: bootstash <command> [options]\n")
 	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "commands:\n")
-	fmt.Fprintf(os.Stderr, "  check-config       parse dist defaults, operator config, secrets, and BIND specs, then exit\n")
+	fmt.Fprintf(os.Stderr, "  check-config       parse dist defaults, operator config, secrets, and LISTEN specs, then exit\n")
 	fmt.Fprintf(os.Stderr, "  provision-google   print Google OIDC recipe and install the downloaded client JSON\n")
 	fmt.Fprintf(os.Stderr, "  links              list OIDC→PAM maps (needs read of $DATA/state)\n")
 	fmt.Fprintf(os.Stderr, "  unlink             drop OIDC→PAM links for a Unix user (needs write to $DATA/state)\n")

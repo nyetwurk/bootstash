@@ -43,7 +43,7 @@ is set or can be derived from
 (or
 .B hostname \-f
 if none) and the first TCP
-.B BIND
+.B LISTEN
 port, and
 .B OIDC_GOOGLE_CLIENT_ID
 is set (usually the Google client JSON in
@@ -76,7 +76,7 @@ Print the version from
 and exit.
 .TP
 .BR \-t ", " \-\-check\-config
-Parse dist defaults, operator config, secrets file, BIND specs, and
+Parse dist defaults, operator config, secrets file, LISTEN specs, and
 TLS files when HTTPS is on (skipped if
 .BR TLS=no ).
 Print a short summary and exit. Does not listen.
@@ -144,7 +144,7 @@ Operator config
 .BR root:root );
 commented
 .BR DATA ,
-.BR BIND ,
+.BR LISTEN ,
 .BR PUBLIC_URL ,
 and
 .BR ADMIN_USERS

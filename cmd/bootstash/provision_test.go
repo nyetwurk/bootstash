@@ -32,7 +32,7 @@ func TestPrintGoogleSetupRecommendations(t *testing.T) {
 		"Recommend: type Web application",
 		"https://stash.example/oidc/callback",
 		"HTTPS: PEMs found",
-		"does not change BIND",
+		"does not change LISTEN",
 		"CERT_NAME=stash.example",
 		"4. Download the client JSON",
 		"Not your Google account",
@@ -83,7 +83,7 @@ func TestInstallGoogleClientJSONCopiesDownload(t *testing.T) {
 	src := filepath.Join(dir, "client_secret.json")
 	sec := filepath.Join(dir, "oidc-google")
 	body := `{"web":{"client_id":"cid.apps.googleusercontent.com","client_secret":"sekrit","project_id":"bootstash"}}` + "\n"
-	if err := os.WriteFile(op, []byte("PUBLIC_URL=https://stash.test\nBIND=lo:8080\n"), 0640); err != nil {
+	if err := os.WriteFile(op, []byte("PUBLIC_URL=https://stash.test\nLISTEN=lo:8080\n"), 0640); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(src, []byte(body), 0600); err != nil {

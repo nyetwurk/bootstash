@@ -91,8 +91,8 @@ origin_host() {
 	printf '%s' "$u"
 }
 
-# First uncommented BIND= (same order as the daemon).
-first_bind() {
+# First uncommented LISTEN= (same order as the daemon).
+first_listen() {
 	file=$1
 	[ -r "$file" ] || return 0
 	while IFS= read -r line || [ -n "$line" ]; do
@@ -101,7 +101,7 @@ first_bind() {
 		esac
 		k=${line%%=*}
 		k=$(printf '%s' "$k" | tr -d ' \t')
-		[ "$k" = BIND ] || continue
+		[ "$k" = LISTEN ] || continue
 		v=${line#*=}
 		v=$(printf '%s' "$v" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^"//;s/"$//;s/^'\''//;s/'\''$//')
 		printf '%s' "$v"
@@ -109,15 +109,15 @@ first_bind() {
 	done <"$file"
 }
 
-# Same as config.derivePublicURL: CERT_NAME host, first TCP BIND
+# Same as config.derivePublicURL: CERT_NAME host, first TCP LISTEN
 # (else default-dist / 8080), https if the dest pair exists (unless
 # TLS=no), omit
 # 80 and 443.
 derived_public_url() {
 	host=$1
 	[ -n "$host" ] || return 0
-	bind=$(first_bind "$op")
-	[ -n "$bind" ] || bind=$(first_bind /usr/lib/bootstash/default-dist)
+	bind=$(first_listen "$op")
+	[ -n "$bind" ] || bind=$(first_listen /usr/lib/bootstash/default-dist)
 	[ -n "$bind" ] || bind=127.0.0.1:8080
 	port=
 	case $bind in

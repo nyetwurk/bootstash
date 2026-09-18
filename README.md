@@ -83,7 +83,7 @@ TLS:
 - `TLS=no`: cleartext on TCP binds; the hook does not copy `live/`
   and dest PEMs are removed. A reverse proxy may terminate HTTPS
 
-How to set `BIND`, `PUBLIC_URL`, and TLS:
+How to set `LISTEN`, `PUBLIC_URL`, and TLS:
 [`QUICKSTART.md`](QUICKSTART.md).
 
 ## Your files vs everyone else's

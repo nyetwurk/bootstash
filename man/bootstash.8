@@ -43,7 +43,7 @@ Parse dist defaults
 .IR /etc/default/bootstash ,
 .IR /etc/bootstash/oidc-google.json ,
 every
-.B BIND
+.B LISTEN
 spec, and TLS files when HTTPS is on (skipped if
 .BR TLS=no ).
 Exit 0 if the daemon could start (missing
@@ -59,12 +59,12 @@ It says whether that URI is
 .B https
 (daemon would speak HTTPS: PEMs and not
 .BR TLS=no ;
-BIND port stays) or
+LISTEN port stays) or
 .B http
 (no certs, or
 .BR TLS=no ),
 and that finding certs does not move
-.B BIND
+.B LISTEN
 to 443.
 Then install the Web application client JSON the console
 downloads as

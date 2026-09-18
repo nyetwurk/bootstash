@@ -6,7 +6,7 @@
 # See bootstash(5). Empty means unset / derived at runtime.
 
 DATA=/var/lib/bootstash
-BIND=127.0.0.1:8080
+LISTEN=127.0.0.1:8080
 PUBLIC_URL=
 ADMIN_USERS=
 

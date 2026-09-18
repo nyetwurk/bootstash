@@ -48,7 +48,7 @@ const (
 // ErrNotReady means an interface is not present yet (retry).
 var ErrNotReady = errors.New("bind target not ready")
 
-// Spec is one BIND= line after parsing.
+// Spec is one LISTEN= line after parsing.
 type Spec struct {
 	Raw      string
 	Kind     Kind
@@ -68,7 +68,7 @@ type Target struct {
 	Unix    bool
 }
 
-// ParseSpec parses a single BIND value.
+// ParseSpec parses a single LISTEN value.
 func ParseSpec(s string) (*Spec, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {

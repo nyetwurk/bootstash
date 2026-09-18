@@ -16,20 +16,20 @@ then
 then
 .IR /etc/bootstash/oidc-google.json .
 Later source wins for scalars. If the operator file mentions
-.B BIND
+.B LISTEN
 at all, its
-.B BIND=
+.B LISTEN=
 lines replace the packaged listen list (several
-.B BIND=
+.B LISTEN=
 lines in
 .I /etc/default/bootstash
 append to each other). The secrets file cannot change
-.BR BIND .
+.BR LISTEN .
 .PP
 .I /etc/default/bootstash
 is a conffile and ships with commented
 .BR DATA ,
-.BR BIND ,
+.BR LISTEN ,
 .BR PUBLIC_URL ,
 and
 .BR ADMIN_USERS .
@@ -56,7 +56,7 @@ would pass (same as
 First install without a Google client id stays down.
 It prints remaining steps (daemon not started or not enabled on
 boot, no Google client id, loopback
-.BR BIND ,
+.BR LISTEN ,
 no copied certs unless
 .BR TLS=no ).
 .PP
@@ -64,7 +64,7 @@ no copied certs unless
 is the Google Web application client JSON
 .B bootstash provision-google
 installs. It is not a conffile. Do not put
-.BR BIND ,
+.BR LISTEN ,
 .BR PUBLIC_URL ,
 or other operator keys there.
 .PP
@@ -102,7 +102,7 @@ When unset, the daemon uses
 (or
 .B hostname \-f
 if none) and the first TCP
-.B BIND
+.B LISTEN
 port, with scheme
 .B https
 when cert files are present
@@ -115,7 +115,7 @@ Ports 80 and 443 are omitted.
 is not used.
 Write this when the browser’s URL is not that host.
 .TP
-.B BIND
+.B LISTEN
 Repeatable listen spec:
 .IR where:port
 with optional

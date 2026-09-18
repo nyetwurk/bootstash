@@ -4,7 +4,7 @@
 # Google client JSON: bootstash provision-google
 # (installs /etc/bootstash/oidc-google.json, not this file).
 #
-# BIND=tun0:8443
+# LISTEN=tun0:8443
 # PUBLIC_URL=https://stash.example
 # CERT_NAME=stash.example
 # TLS=no

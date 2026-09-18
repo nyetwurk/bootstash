@@ -10,14 +10,14 @@ import (
 	"testing"
 )
 
-func TestLoadOperatorConfigReplacesBIND(t *testing.T) {
+func TestLoadOperatorConfigReplacesLISTEN(t *testing.T) {
 	dir := t.TempDir()
 	def := filepath.Join(dir, "default-dist")
 	op := filepath.Join(dir, "config")
-	if err := os.WriteFile(def, []byte("BIND=127.0.0.1:8080\nDATA=/tmp/data\n"), 0644); err != nil {
+	if err := os.WriteFile(def, []byte("LISTEN=127.0.0.1:8080\nDATA=/tmp/data\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(op, []byte("BIND=tun0:8443\nBIND=lo:8080\nPUBLIC_URL=https://stash.test\nOIDC_GOOGLE_CLIENT_ID=cid\n"), 0600); err != nil {
+	if err := os.WriteFile(op, []byte("LISTEN=tun0:8443\nLISTEN=lo:8080\nPUBLIC_URL=https://stash.test\nOIDC_GOOGLE_CLIENT_ID=cid\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load(def, op, filepath.Join(dir, "nosecrets"))
@@ -32,10 +32,10 @@ func TestLoadOperatorConfigReplacesBIND(t *testing.T) {
 	}
 }
 
-func TestLoadMissingConfigKeepsDefaultBIND(t *testing.T) {
+func TestLoadMissingConfigKeepsDefaultLISTEN(t *testing.T) {
 	dir := t.TempDir()
 	def := filepath.Join(dir, "default-dist")
-	if err := os.WriteFile(def, []byte("BIND=127.0.0.1:8080\n"), 0644); err != nil {
+	if err := os.WriteFile(def, []byte("LISTEN=127.0.0.1:8080\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load(def, filepath.Join(dir, "missing"), filepath.Join(dir, "nosecrets"))
@@ -57,7 +57,7 @@ func TestDefaultPublicURLFromHostname(t *testing.T) {
 
 	dir := t.TempDir()
 	def := filepath.Join(dir, "default-dist")
-	if err := os.WriteFile(def, []byte("BIND=127.0.0.1:8080\n"), 0644); err != nil {
+	if err := os.WriteFile(def, []byte("LISTEN=127.0.0.1:8080\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load(def, filepath.Join(dir, "missing"), filepath.Join(dir, "nosecrets"))
@@ -69,7 +69,7 @@ func TestDefaultPublicURLFromHostname(t *testing.T) {
 	}
 
 	op := filepath.Join(dir, "tls")
-	if err := os.WriteFile(op, []byte("TLS_CERT=/c\nTLS_KEY=/k\nBIND=*:443\n"), 0600); err != nil {
+	if err := os.WriteFile(op, []byte("TLS_CERT=/c\nTLS_KEY=/k\nLISTEN=*:443\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err = Load(def, op, filepath.Join(dir, "nosecrets"))
@@ -125,7 +125,7 @@ func TestDefaultTLSFromCertDir(t *testing.T) {
 
 	dir := t.TempDir()
 	def := filepath.Join(dir, "default-dist")
-	if err := os.WriteFile(def, []byte("BIND=127.0.0.1:8080\n"), 0644); err != nil {
+	if err := os.WriteFile(def, []byte("LISTEN=127.0.0.1:8080\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load(def, filepath.Join(dir, "missing"), filepath.Join(dir, "nosecrets"))
@@ -209,7 +209,7 @@ func TestDefaultTLSFromCertName(t *testing.T) {
 	dir := t.TempDir()
 	def := filepath.Join(dir, "default-dist")
 	op := filepath.Join(dir, "config")
-	if err := os.WriteFile(def, []byte("BIND=127.0.0.1:8080\n"), 0644); err != nil {
+	if err := os.WriteFile(def, []byte("LISTEN=127.0.0.1:8080\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(op, []byte("CERT_NAME=box.example\n"), 0600); err != nil {
@@ -250,7 +250,7 @@ func TestDefaultOriginFromOnlyCertDir(t *testing.T) {
 
 	dir := t.TempDir()
 	def := filepath.Join(dir, "default-dist")
-	if err := os.WriteFile(def, []byte("BIND=127.0.0.1:8080\n"), 0644); err != nil {
+	if err := os.WriteFile(def, []byte("LISTEN=127.0.0.1:8080\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load(def, filepath.Join(dir, "missing"), filepath.Join(dir, "nosecrets"))
@@ -311,18 +311,18 @@ func TestAdminUsers(t *testing.T) {
 	}
 }
 
-func TestLoadSecretsOverridesOIDCIgnoresBIND(t *testing.T) {
+func TestLoadSecretsOverridesOIDCIgnoresLISTEN(t *testing.T) {
 	dir := t.TempDir()
 	def := filepath.Join(dir, "default-dist")
 	op := filepath.Join(dir, "config")
 	sec := filepath.Join(dir, "oidc-google")
-	if err := os.WriteFile(def, []byte("BIND=127.0.0.1:8080\n"), 0644); err != nil {
+	if err := os.WriteFile(def, []byte("LISTEN=127.0.0.1:8080\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(op, []byte("PUBLIC_URL=https://stash.test\nOIDC_GOOGLE_CLIENT_ID=old\nBIND=lo:8080\n"), 0600); err != nil {
+	if err := os.WriteFile(op, []byte("PUBLIC_URL=https://stash.test\nOIDC_GOOGLE_CLIENT_ID=old\nLISTEN=lo:8080\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(sec, []byte(`{"web":{"client_id":"new","client_secret":"sekrit"},"BIND":"evil:9"}`+"\n"), 0640); err != nil {
+	if err := os.WriteFile(sec, []byte(`{"web":{"client_id":"new","client_secret":"sekrit"},"LISTEN":"evil:9"}`+"\n"), 0640); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load(def, op, sec)
@@ -354,7 +354,7 @@ func TestLoadSecretsKEYValueFallback(t *testing.T) {
 	dir := t.TempDir()
 	def := filepath.Join(dir, "default-dist")
 	sec := filepath.Join(dir, "oidc-google")
-	if err := os.WriteFile(def, []byte("BIND=127.0.0.1:8080\n"), 0644); err != nil {
+	if err := os.WriteFile(def, []byte("LISTEN=127.0.0.1:8080\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(sec, []byte("OIDC_GOOGLE_CLIENT_ID=legacy\n"), 0640); err != nil {
@@ -391,7 +391,7 @@ func TestTLSFalseSynonym(t *testing.T) {
 	dir := t.TempDir()
 	def := filepath.Join(dir, "default-dist")
 	op := filepath.Join(dir, "config")
-	if err := os.WriteFile(def, []byte("BIND=127.0.0.1:8080\n"), 0644); err != nil {
+	if err := os.WriteFile(def, []byte("LISTEN=127.0.0.1:8080\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(op, []byte("TLS=false\nPUBLIC_URL=http://box.example:8080\n"), 0600); err != nil {

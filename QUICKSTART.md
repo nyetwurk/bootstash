@@ -6,7 +6,7 @@
 
 Note the messages it prints about what is still needed.
 
-Edit `/etc/default/bootstash` if `BIND` or the browser URL are not the
+Edit `/etc/default/bootstash` if `LISTEN` or the browser URL are not the
 defaults (see below). Then:
 
 ```bash
@@ -30,7 +30,7 @@ It prints recommended values for:
 - The redirect URI from the loaded config
 
 The printed URI uses `https` when both PEMs exist and `TLS` is not
-`no`. The port comes from `BIND`; finding certs does not move it to
+`no`. The port comes from `LISTEN`; finding certs does not move it to
 443.
 
 When the client is created, the console shows:
@@ -47,7 +47,7 @@ file; do not paste them into `/etc/default/bootstash`.
 
 ## Config
 
-`/etc/default/bootstash` ships with commented `DATA`, `BIND`,
+`/etc/default/bootstash` ships with commented `DATA`, `LISTEN`,
 `PUBLIC_URL`, and `ADMIN_USERS`. Add only what you need to change.
 Packaged values stay in `/usr/lib/bootstash/default-dist` (every key).
 
@@ -63,7 +63,7 @@ use `dpkg --force-confmiss -i`.
 
 ## Listen
 
-Packaged bind is `127.0.0.1:8080`. Set `BIND` before another host can
+Packaged listen is `127.0.0.1:8080`. Set `LISTEN` before another host can
 reach you:
 
 - interface
@@ -190,7 +190,7 @@ Configure does not enable the unit.
   pass (same as `bootstashd -t`)
 - First install without a Google client id stays down
 - Configure prints what is still needed: daemon not started or not
-  enabled on boot, no Google client id, loopback BIND, no copied
+  enabled on boot, no Google client id, loopback LISTEN, no copied
   certs unless `TLS=no`
 
 ## `man` pages

@@ -113,7 +113,7 @@ func (s *Server) SyncBinds(reload bool) error {
 	for _, raw := range cfg.Binds {
 		sp, err := bind.ParseSpec(raw)
 		if err != nil {
-			return fmt.Errorf("BIND %q: %w", raw, err)
+			return fmt.Errorf("LISTEN %q: %w", raw, err)
 		}
 		specs = append(specs, *sp)
 	}

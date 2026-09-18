@@ -75,8 +75,8 @@ print_next() {
 		echo "bootstash: no Google client id. Run: sudo bootstash provision-google" >&2
 		need=1
 	fi
-	if ! has_key "$op" BIND; then
-		echo "bootstash: BIND is still 127.0.0.1:8080. Set BIND in $op if another host must reach you." >&2
+	if ! has_key "$op" LISTEN; then
+		echo "bootstash: LISTEN is still 127.0.0.1:8080. Set LISTEN in $op if another host must reach you." >&2
 		need=1
 	fi
 	tls0=

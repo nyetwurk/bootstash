@@ -13,7 +13,7 @@ import (
 	"github.com/nyet/bootstash/internal/config"
 )
 
-// Check loads config, requires Ready keys, parses every BIND spec, and
+// Check loads config, requires Ready keys, parses every LISTEN spec, and
 // loads TLS files when configured. It does not bind sockets.
 func Check(defaultsPath, configPath, secretsPath string) (*config.Config, error) {
 	cfg, err := config.Load(defaultsPath, configPath, secretsPath)
@@ -25,7 +25,7 @@ func Check(defaultsPath, configPath, secretsPath string) (*config.Config, error)
 	}
 	for _, raw := range cfg.Binds {
 		if _, err := bind.ParseSpec(raw); err != nil {
-			return cfg, fmt.Errorf("BIND %q: %w", raw, err)
+			return cfg, fmt.Errorf("LISTEN %q: %w", raw, err)
 		}
 	}
 	if cfg.UseTLS() {
@@ -38,7 +38,7 @@ func Check(defaultsPath, configPath, secretsPath string) (*config.Config, error)
 
 // Summary is the check-config / startup line (no secrets).
 func Summary(cfg *config.Config) string {
-	s := fmt.Sprintf("url=%s binds=%s", cfg.PublicURL, strings.Join(cfg.Binds, ","))
+	s := fmt.Sprintf("url=%s listen=%s", cfg.PublicURL, strings.Join(cfg.Binds, ","))
 	if cfg.DisableTLS {
 		s += " tls=no"
 	}

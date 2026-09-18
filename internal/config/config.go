@@ -73,7 +73,7 @@ func orDefault(s, def string) string {
 
 // Load merges built-ins, the dist defaults file, then the operator
 // config, then the secrets file. A missing file is not an error.
-// Secrets do not replace BIND.
+// Secrets do not replace LISTEN.
 func Load(defaultsPath, configPath, secretsPath string) (*Config, error) {
 	defaultsPath = orDefault(defaultsPath, DefaultDistPath)
 	configPath = orDefault(configPath, DefaultConfigPath)
@@ -119,14 +119,14 @@ func (c *Config) Ready() error {
 		return fmt.Errorf("TLS_CERT and TLS_KEY must be set together")
 	}
 	if len(c.Binds) == 0 {
-		return fmt.Errorf("no BIND specs")
+		return fmt.Errorf("no LISTEN specs")
 	}
 	return nil
 }
 
 func (c *Config) apply(m map[string][]string) error {
 	c.PublicURL = strings.TrimRight(first(m, "PUBLIC_URL"), "/")
-	c.Binds = append([]string(nil), m["BIND"]...)
+	c.Binds = append([]string(nil), m["LISTEN"]...)
 	c.TLSCert = first(m, "TLS_CERT")
 	c.TLSKey = first(m, "TLS_KEY")
 	c.Data = first(m, "DATA")
@@ -220,15 +220,15 @@ func cloneMap(in map[string][]string) map[string][]string {
 }
 
 func mergeInto(dst, src map[string][]string) {
-	if vals, ok := src["BIND"]; ok {
-		dst["BIND"] = append([]string(nil), vals...)
+	if vals, ok := src["LISTEN"]; ok {
+		dst["LISTEN"] = append([]string(nil), vals...)
 	}
 	mergeScalars(dst, src)
 }
 
 func mergeScalars(dst, src map[string][]string) {
 	for k, vals := range src {
-		if k == "BIND" || len(vals) == 0 {
+		if k == "LISTEN" || len(vals) == 0 {
 			continue
 		}
 		dst[k] = []string{vals[len(vals)-1]}

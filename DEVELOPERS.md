@@ -44,12 +44,12 @@ Load order: built-in (embed of `internal/config/default-dist`) /
 `/usr/lib/bootstash/default-dist` (not a
 conffile; **every** key, including empty/derived), then
 `/etc/default/bootstash` (conffile; `0644` `root:root` like other
-`/etc/default` files; commented `DATA`, `BIND`,
+`/etc/default` files; commented `DATA`, `LISTEN`,
 `PUBLIC_URL`, `ADMIN_USERS`; operator diffs), then
 `/etc/bootstash/oidc-google.json` (helper-written; not a
-conffile). Later scalars win. If the operator file mentions `BIND` at
+conffile). Later scalars win. If the operator file mentions `LISTEN` at
 all, those lines replace the packaged listen list. Secrets **cannot**
-change `BIND`. Do not invent a second set of scalar defaults in Go.
+change `LISTEN`. Do not invent a second set of scalar defaults in Go.
 
 `bootstash provision-google` installs the Google console’s Web
 application client JSON as `/etc/bootstash/oidc-google.json` (`0640`
@@ -97,9 +97,9 @@ Do not rewrite the request from `X-Forwarded-Proto` /
 cookies). A reverse proxy must set `PUBLIC_URL` to the URL the
 browser uses; `Host` on the backend socket does not matter.
 
-## Bind
+## Listen
 
-Repeatable `where:port` plus optional `/ipv4` or `/ipv6`. `where` is
+Repeatable `LISTEN=` `where:port` plus optional `/ipv4` or `/ipv6`. `where` is
 `*`, an address, a CIDR, an interface, or `unix://path`. Port 0 is
 rejected. Unix sockets are HTTP only.
 

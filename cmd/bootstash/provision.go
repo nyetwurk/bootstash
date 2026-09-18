@@ -129,12 +129,12 @@ func printGoogleSetup(w io.Writer, s googleSetup) {
 		fmt.Fprintln(w, "   PUBLIC_URL came from -origin.")
 	} else if s.TLS {
 		fmt.Fprintln(w, "   HTTPS: PEMs found under /etc/bootstash/certs (TCP binds already")
-		fmt.Fprintln(w, "   speak HTTPS). Finding certs does not change BIND or move the port")
-		fmt.Fprintln(w, "   to 443. The port in the URI is BIND ("+strings.Join(s.Binds, ", ")+").")
+		fmt.Fprintln(w, "   speak HTTPS). Finding certs does not change LISTEN or move the port")
+		fmt.Fprintln(w, "   to 443. The port in the URI is LISTEN ("+strings.Join(s.Binds, ", ")+").")
 		if s.CertName != "" {
 			fmt.Fprintln(w, "   CERT_NAME="+s.CertName)
 		}
-		fmt.Fprintln(w, "   Browser on default HTTPS: set BIND (e.g. *:443) and run this again.")
+		fmt.Fprintln(w, "   Browser on default HTTPS: set LISTEN (e.g. *:443) and run this again.")
 	} else if s.TLSOff {
 		fmt.Fprintln(w, "   HTTP: TLS=no. TCP binds stay cleartext. The deploy hook does")
 		fmt.Fprintln(w, "   not copy live/ into /etc/bootstash/certs and removes dest PEMs")
