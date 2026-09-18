@@ -116,9 +116,6 @@ func (s *Server) Close(ctx context.Context) error {
 }
 
 func ensureLayout(data string) error {
-	if err := os.MkdirAll(filepath.Join(data, "shared"), 0750); err != nil {
-		return err
-	}
 	users := filepath.Join(data, "users")
 	if err := os.MkdirAll(users, 0711); err != nil {
 		return err
@@ -144,10 +141,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleLink(w, r)
 	case r.URL.Path == "/unlink":
 		s.handleUnlink(w, r)
-	case strings.HasPrefix(r.URL.Path, "/files"):
-		s.handleFiles(w, r, false)
 	case strings.HasPrefix(r.URL.Path, "/home"):
-		s.handleFiles(w, r, true)
+		s.handleFiles(w, r)
 	case strings.HasPrefix(r.URL.Path, "/static/"):
 		s.handleStatic(w, r)
 	default:

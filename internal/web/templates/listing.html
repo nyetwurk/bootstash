@@ -1,10 +1,9 @@
 {{/* Copyright (C) 2026 Nye Liu. SPDX-License-Identifier: GPL-3.0-or-later */}}
 {{define "listing"}}
-<nav>
-{{if .Parent}}<a href="{{.Parent}}">Parent directory</a> · {{end}}
-<a href="/home/">Your files</a> · <a href="/files/">Shared</a>
-</nav>
-<h1>{{.Heading}}</h1>
+{{if .Parent}}
+<nav><a href="{{.Parent}}">Parent directory</a></nav>
+{{end}}
+{{if .Heading}}<h1>{{.Heading}}</h1>{{end}}
 {{if .CanWrite}}
 <form method="post" enctype="multipart/form-data" action="{{.Action}}">
 <label>Upload<br><input type="file" name="file"></label>

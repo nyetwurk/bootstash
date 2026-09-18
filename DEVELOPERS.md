@@ -118,7 +118,6 @@ rejected. Unix sockets are HTTP only.
 `$DATA` (default `/var/lib/bootstash`, `0751` so the cubby owner
 can traverse in):
 
-- `shared/` — linked users, HTTP read-only unless `SHARED_WRITABLE`
 - `users/<pam_user>/` — that PAM user; HTTP read/write. `2770`
   `alice:bootstash` when `CAP_CHOWN` works (`CAP_FSETID` so `chown`
   does not drop setgid; `CAP_FOWNER` so `chmod` after `chown`
@@ -136,8 +135,8 @@ directory is 409. Do not serve `state/`. CSRF (`Origin` or
 `Sec-Fetch-Site` vs `PUBLIC_URL`) on every state-changing request.
 New HTTP files `0660`, dirs `0770`.
 
-Routes: `/login`, `/oidc/callback`, `/link`, `/unlink`, `/files/`,
-`/home/`. Unlinked sessions only reach login, callback, and `/link`.
+Routes: `/login`, `/oidc/callback`, `/link`, `/unlink`, `/home/`.
+Unlinked sessions only reach login, callback, and `/link`.
 HTML is a few templates, phone-sized targets, packaged `:root` +
 `prefers-color-scheme`. No SPA, no theme picker.
 
@@ -166,5 +165,5 @@ client JSON. It does **not** create the Google web client
 
 ## Tests that matter
 
-Jail, Alice/Bob, CSRF, oversize, shared write-off, unlinked cannot
-read trees, Range, bad PAM, DELETE, cubby `0711`/`2770`/`0640`.
+Jail, Alice/Bob, CSRF, oversize, unlinked cannot read trees, Range,
+bad PAM, DELETE, cubby `0711`/`2770`/`0640`.

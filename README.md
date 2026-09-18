@@ -2,8 +2,8 @@
 
 A small daemon that is a **self-hosted cubby for bootstrap files**: after
 you prove you are an existing Linux user, you **browse, download, and
-upload** a shared tree (read) and your own tree (read/write) — keys,
-profiles, first-run artifacts — in a phone browser.
+upload** your own tree — keys, profiles, first-run artifacts — in a
+phone browser.
 
 It is not a secrets engine (no unseal, leases, or KV API). Bind wherever
 you want (loopback, LAN, a tunnel NIC, later a public address). v1 auth
@@ -48,11 +48,9 @@ reverse proxy may terminate HTTPS). See
 - Sign in with Google
 - Link that sign-in to your existing Linux account (the same one ssh
   already uses). Username + password, once
-- Browse a **shared** folder that every linked user can see (read)
 - Browse **your** folder that other people cannot see
 - Download files, including large ones (phones can play or save them)
-- Upload into **your** folder (shared stays read-only unless you turn
-  that on)
+- Upload into **your** folder
 - Delete files (and empty folders) in **your** folder
 - Later: **expiration** of HTTP-uploaded kit files so the tree does not
   accumulate forever
@@ -74,7 +72,6 @@ proxy). How to set `BIND`, `PUBLIC_URL`, and TLS:
 
 One data volume (you choose the path):
 
-- `shared/` — any signed-in, linked user
 - `users/<linux-username>/` — only that PAM user
 
 The daemon runs as one service account so it can read those trees. The
@@ -82,8 +79,8 @@ cubby owner can drop files into `users/<their-name>/` from a login
 (`$DATA` is `0751`; parent `users/` is `0711`; the cubby is `2770`
 `you:bootstash`). Ordinary `cp` (not `cp -a`). Do not `chown` to
 `bootstash`. Opening `/home` (or start/SIGHUP) sets group `bootstash`
-and `0640`. Other Linux logins cannot enter your cubby. HTTP also
-refuses paths outside your folder and `shared/`.
+and `0640`. Other Linux logins cannot enter your cubby. HTTP refuses
+paths outside your folder.
 
 ## What this is not
 

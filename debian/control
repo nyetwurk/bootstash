@@ -29,6 +29,5 @@ Suggests:
  google-cloud-cli
 Description: convenience cubby for bootstrap files
  bootstash is a small HTTP daemon that lets existing PAM users browse,
- download, and upload bootstrap files after Google sign-in. Shared tree
- is read-only over HTTP by default; each linked user has a private tree.
- It is a convenience store, not a high-assurance secrets engine.
+ download, and upload bootstrap files in their own tree after Google
+ sign-in. It is a convenience store, not a high-assurance secrets engine.

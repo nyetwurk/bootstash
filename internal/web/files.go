@@ -21,25 +21,22 @@ import (
 	"github.com/nyet/bootstash/internal/store"
 )
 
-func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request, home bool) {
+func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 	sess := s.session(r)
 	if sess == nil || sess.PAMUser == "" {
 		http.Error(w, "login required", http.StatusUnauthorized)
 		return
 	}
-	prefix := "/files"
-	if home {
-		prefix = "/home"
-	}
+	const prefix = "/home"
 	if r.URL.Path == prefix {
 		http.Redirect(w, r, prefix+"/", http.StatusFound)
 		return
 	}
 	rel := strings.TrimPrefix(r.URL.Path, prefix+"/")
-	if home && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
 		s.prepareCubbyRead(sess.PAMUser, rel)
 	}
-	rootPath, err := s.jailPath(home, sess)
+	rootPath, err := s.jailPath(sess)
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
@@ -53,19 +50,19 @@ func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request, home bool) 
 
 	switch r.Method {
 	case http.MethodGet, http.MethodHead:
-		s.serveGet(w, r, root, prefix, rel, home)
+		s.serveGet(w, r, root, prefix, rel)
 	case http.MethodPut:
-		if !s.requireWrite(w, r, home) {
+		if !s.requireWrite(w, r) {
 			return
 		}
 		s.servePut(w, r, root, rel, sess)
 	case http.MethodPost:
-		if !s.requireWrite(w, r, home) {
+		if !s.requireWrite(w, r) {
 			return
 		}
 		s.servePost(w, r, root, prefix, rel, sess)
 	case http.MethodDelete:
-		if !s.requireWrite(w, r, home) {
+		if !s.requireWrite(w, r) {
 			return
 		}
 		s.serveDelete(w, r, root, rel, "")
@@ -74,23 +71,12 @@ func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request, home bool) 
 	}
 }
 
-func (s *Server) requireWrite(w http.ResponseWriter, r *http.Request, home bool) bool {
-	if !s.canWrite(home) {
-		http.Error(w, "read-only", http.StatusForbidden)
-		return false
-	}
+func (s *Server) requireWrite(w http.ResponseWriter, r *http.Request) bool {
 	return s.requireCSRF(w, r)
 }
 
-func (s *Server) canWrite(home bool) bool {
-	if home {
-		return true
-	}
-	return s.config().SharedWritable
-}
-
 // isAdmin is the v1 seam: ADMIN_USERS in operator config, linked PAM name, live config.
-// It does not change jail roots or SHARED_WRITABLE.
+// It grants no extra HTTP powers.
 func (s *Server) isAdmin(sess *store.Session) bool {
 	if sess == nil || sess.PAMUser == "" {
 		return false
@@ -98,18 +84,14 @@ func (s *Server) isAdmin(sess *store.Session) bool {
 	return s.config().IsAdmin(sess.PAMUser)
 }
 
-func (s *Server) jailPath(home bool, sess *store.Session) (string, error) {
-	cfg := s.config()
-	if home {
-		if !pamauth.ValidUsername(sess.PAMUser) || !filepath.IsLocal(sess.PAMUser) {
-			return "", os.ErrNotExist
-		}
-		return path.Join(cfg.Data, "users", sess.PAMUser), nil
+func (s *Server) jailPath(sess *store.Session) (string, error) {
+	if !pamauth.ValidUsername(sess.PAMUser) || !filepath.IsLocal(sess.PAMUser) {
+		return "", os.ErrNotExist
 	}
-	return path.Join(cfg.Data, "shared"), nil
+	return path.Join(s.config().Data, "users", sess.PAMUser), nil
 }
 
-func (s *Server) serveGet(w http.ResponseWriter, r *http.Request, root *jail.Root, prefix, rel string, home bool) {
+func (s *Server) serveGet(w http.ResponseWriter, r *http.Request, root *jail.Root, prefix, rel string) {
 	info, err := root.Stat(rel)
 	if err != nil {
 		if jail.IsNotExist(err) {
@@ -124,7 +106,7 @@ func (s *Server) serveGet(w http.ResponseWriter, r *http.Request, root *jail.Roo
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		s.serveListing(w, r, root, prefix, rel, home)
+		s.serveListing(w, r, root, prefix, rel)
 		return
 	}
 	f, err := root.Open(rel)
@@ -147,7 +129,7 @@ func (s *Server) serveGet(w http.ResponseWriter, r *http.Request, root *jail.Roo
 	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 }
 
-func (s *Server) serveListing(w http.ResponseWriter, r *http.Request, root *jail.Root, prefix, rel string, home bool) {
+func (s *Server) serveListing(w http.ResponseWriter, r *http.Request, root *jail.Root, prefix, rel string) {
 	infos, err := root.ReadDirNames(rel)
 	if err != nil {
 		http.Error(w, "forbidden", http.StatusForbidden)
@@ -184,10 +166,7 @@ func (s *Server) serveListing(w http.ResponseWriter, r *http.Request, root *jail
 			parent += "/"
 		}
 	}
-	heading := "Shared"
-	if home {
-		heading = "Your files"
-	}
+	heading := ""
 	if rel != "" {
 		heading = rel
 	}
@@ -196,7 +175,7 @@ func (s *Server) serveListing(w http.ResponseWriter, r *http.Request, root *jail
 		Heading:  heading,
 		Parent:   parent,
 		Action:   listingURL(prefix, rel),
-		CanWrite: s.canWrite(home),
+		CanWrite: true,
 		Entries:  entries,
 	})
 }

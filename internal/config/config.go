@@ -39,7 +39,6 @@ type Config struct {
 	CryptoKey          []byte
 	PAMService         string
 	MaxUpload          int64
-	SharedWritable     bool
 	UnixGroup          string
 	AdminUsers         []string
 	DefaultsPath       string
@@ -148,13 +147,6 @@ func (c *Config) apply(m map[string][]string) error {
 			return fmt.Errorf("TLS: %w", err)
 		}
 		c.DisableTLS = off
-	}
-	if s := first(m, "SHARED_WRITABLE"); s != "" {
-		on, err := parseBool(s)
-		if err != nil {
-			return fmt.Errorf("SHARED_WRITABLE: %w", err)
-		}
-		c.SharedWritable = on
 	}
 	if s := first(m, "MAX_UPLOAD"); s != "" {
 		n, err := parseSize(s)

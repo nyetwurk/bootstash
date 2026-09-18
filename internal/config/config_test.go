@@ -437,7 +437,7 @@ func TestBuiltinDefaultDist(t *testing.T) {
 	if cfg.Data != "/var/lib/bootstash" || cfg.PAMService != "bootstashd" || cfg.UnixGroup != "bootstash" {
 		t.Fatalf("paths %+v", cfg)
 	}
-	if cfg.MaxUpload != 32<<20 || cfg.SharedWritable || cfg.DisableTLS {
+	if cfg.MaxUpload != 32<<20 || cfg.DisableTLS {
 		t.Fatalf("scalars %+v", cfg)
 	}
 	if len(cfg.Binds) != 1 || cfg.Binds[0] != "127.0.0.1:8080" {

@@ -13,8 +13,8 @@ bootstashd \- convenience cubby for bootstrap files
 .SH DESCRIPTION
 .B bootstashd
 is the bootstash daemon. After Google OpenID Connect and a one-time PAM
-link to an existing Unix account, it serves a shared tree (read) and the
-linked user’s tree (read/write) over HTTP or HTTPS.
+link to an existing Unix account, it serves the linked user’s tree
+(read/write) over HTTP or HTTPS.
 .PP
 Packaged
 .B TLS=auto
@@ -147,7 +147,6 @@ Not a conffile.
 Default data volume
 .RB ( 0751 )
 so a cubby owner can traverse in:
-.IR shared/ ,
 .IR users/<pam_user>/
 .RB ( 2770
 .IR alice:bootstash ).
@@ -191,10 +190,8 @@ Mode and owner/group changes are logged
 .RB ( 0700 ,
 not served).
 Removing the package does not delete
-.I shared/
-or
-.IR users/ ;
-those are operator files.
+.IR users/
+(operator files).
 .SH SEE ALSO
 .BR bootstash (8),
 .BR bootstash (5),

@@ -279,13 +279,11 @@ func TestUnlinkedCannotRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := &http.Cookie{Name: s.cookieName(), Value: sess.ID}
-	for _, path := range []string{"/home/", "/files/"} {
-		req := httptest.NewRequest(http.MethodGet, path, nil)
-		req.AddCookie(c)
-		rr := do(s, req)
-		if rr.Code == http.StatusOK {
-			t.Fatalf("unlinked GET %s => %d", path, rr.Code)
-		}
+	req := httptest.NewRequest(http.MethodGet, "/home/", nil)
+	req.AddCookie(c)
+	rr := do(s, req)
+	if rr.Code == http.StatusOK {
+		t.Fatalf("unlinked GET /home/ => %d", rr.Code)
 	}
 }
 
@@ -319,7 +317,7 @@ func TestRange(t *testing.T) {
 	}
 }
 
-func TestUploadCSRFAndOversizeAndShared(t *testing.T) {
+func TestUploadCSRFAndOversize(t *testing.T) {
 	s, st, _ := testServer(t)
 	c := linkedSession(t, s, st, "alice")
 	req := httptest.NewRequest(http.MethodPut, "/home/a.txt", strings.NewReader("hello"))
@@ -346,16 +344,9 @@ func TestUploadCSRFAndOversizeAndShared(t *testing.T) {
 			t.Fatal("oversize accepted")
 		}
 	}
-	req = httptest.NewRequest(http.MethodPut, "/files/no.txt", strings.NewReader("x"))
-	req.Header.Set("Origin", "https://stash.test")
-	req.AddCookie(c)
-	rr = do(s, req)
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("shared write: %d", rr.Code)
-	}
 }
 
-func TestAdminSeamDoesNotBypassShared(t *testing.T) {
+func TestAdminSeamHasNoExtraHTTP(t *testing.T) {
 	s, st, _ := testServer(t)
 	cfg := *s.config()
 	cfg.AdminUsers = []string{"alice"}
@@ -364,13 +355,6 @@ func TestAdminSeamDoesNotBypassShared(t *testing.T) {
 	sess, err := st.GetSession(c.Value)
 	if err != nil || !s.isAdmin(sess) {
 		t.Fatalf("admin seam: err=%v sess=%v", err, sess)
-	}
-	req := httptest.NewRequest(http.MethodPut, "/files/no.txt", strings.NewReader("x"))
-	req.Header.Set("Origin", "https://stash.test")
-	req.AddCookie(c)
-	rr := do(s, req)
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("admin shared write: %d", rr.Code)
 	}
 	bob := linkedSession(t, s, st, "bob")
 	bsess, err := st.GetSession(bob.Value)
@@ -492,20 +476,6 @@ func TestStaticCSSTheming(t *testing.T) {
 	}
 }
 
-func TestSharedReadableWhenLinked(t *testing.T) {
-	s, st, dir := testServer(t)
-	c := linkedSession(t, s, st, "alice")
-	if err := os.WriteFile(filepath.Join(dir, "shared", "kit.txt"), []byte("hello"), 0660); err != nil {
-		t.Fatal(err)
-	}
-	req := httptest.NewRequest(http.MethodGet, "/files/kit.txt", nil)
-	req.AddCookie(c)
-	rr := do(s, req)
-	if rr.Code != http.StatusOK || rr.Body.String() != "hello" {
-		t.Fatalf("%d %q", rr.Code, rr.Body.String())
-	}
-}
-
 func TestPutOverwrite(t *testing.T) {
 	s, st, _ := testServer(t)
 	c := linkedSession(t, s, st, "alice")
@@ -552,13 +522,6 @@ func TestDeleteOwnFile(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatal("file still present")
-	}
-	req = httptest.NewRequest(http.MethodDelete, "/files/kit.txt", nil)
-	req.Header.Set("Origin", "https://stash.test")
-	req.AddCookie(c)
-	rr = do(s, req)
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("shared delete: %d", rr.Code)
 	}
 }
 
@@ -626,11 +589,5 @@ func TestListingShowsDeleteWhenWritable(t *testing.T) {
 	rr := do(s, req)
 	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `name="delete"`) {
 		t.Fatalf("home listing: %d %s", rr.Code, rr.Body.String())
-	}
-	req = httptest.NewRequest(http.MethodGet, "/files/", nil)
-	req.AddCookie(c)
-	rr = do(s, req)
-	if rr.Code != http.StatusOK || strings.Contains(rr.Body.String(), `name="delete"`) {
-		t.Fatalf("shared listing should not delete: %d %s", rr.Code, rr.Body.String())
 	}
 }
