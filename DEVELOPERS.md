@@ -127,16 +127,20 @@ can traverse in):
   Ordinary `cp` (not `cp -a`) so setgid group is `bootstash`.
   Do not `chown` to `bootstash`. Start/SIGHUP and each `/home`
   GET/HEAD also `chgrp` files on that path (and listing children)
-  and set `0640`. Full-tree pass is start/SIGHUP only.
+  and set `0640`, using `openat`/`O_NOFOLLOW`/`fchmod`/`fchown`
+  (not pathname `chmod`). Full-tree pass is start/SIGHUP only.
 - `state/` — sessions, OIDC→PAM map, crypto key. `0700`, never HTTP.
   Writes (including `sudo bootstash unlink`) chown files to the
   state directory owner so `User=bootstash` can still read them.
+  Link and session mutations take `flock` on `state/.lock` so the
+  CLI and daemon cannot interleave a revocation.
 
 Every file `open`/`create`/`unlink` is `openat` from the jail root.
 Reject `..`, NUL, and outbound symlinks. DELETE of a non-empty
 directory is 409. Do not serve `state/`. CSRF (`Origin` or
 `Sec-Fetch-Site` vs `PUBLIC_URL`) on every state-changing request.
-New HTTP files `0660`, dirs `0770`.
+New HTTP files `0660`, dirs `0770`. PUT/POST write a sibling temp
+then `renameat` so a failed upload keeps the old file.
 
 Routes: `/login`, `/oidc/callback`, `/link`, `/logout`, `/home/`.
 Unlinked sessions only reach login, callback, `/link`, and `/logout`.
@@ -150,9 +154,12 @@ UI, no theme picker.
 
 ## Auth
 
-OIDC first (Google issuer `https://accounts.google.com`). Then PAM
-`POST /link`. The daemon (`User=bootstash`) does not call PAM in
-process. It execs `/usr/lib/bootstash/pam` (setuid `4750`
+OIDC first (Google issuer `https://accounts.google.com`). `/login`
+sets a one-time oauth cookie (`__Host-bootstash-oauth` when
+`PUBLIC_URL` is https, else `bootstash_oauth`) bound to the signed
+state. `/oidc/callback` requires that cookie and consumes the
+transaction. Then PAM `POST /link`. The daemon (`User=bootstash`)
+does not call PAM in process. It execs `/usr/lib/bootstash/pam` (setuid `4750`
 `root:bootstash`, not on `PATH`): argv is service + username,
 password on stdin, exit 0/1. The helper runs `pam_authenticate` +
 `pam_acct_mgmt` for service `bootstashd` (`/etc/pam.d/bootstashd` is

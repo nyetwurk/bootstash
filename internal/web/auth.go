@@ -9,9 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/nyet/bootstash/internal/osutil"
 	"github.com/nyet/bootstash/internal/pamauth"
+	"golang.org/x/sys/unix"
 )
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -32,6 +35,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	txID, err := randomHex(32)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	state, err := s.signState(nonce)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -43,6 +51,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "identity provider unavailable", http.StatusBadGateway)
 		return
 	}
+	s.putOauthTx(txID, nonce, time.Now().Add(oauthTTL))
+	s.setCookie(w, s.oauthCookieName(), txID, int(oauthTTL.Seconds()))
 	log.Printf("login start google from %s", r.RemoteAddr)
 	http.Redirect(w, r, u, http.StatusFound)
 }
@@ -57,12 +67,25 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "oidc error: "+errMsg, http.StatusBadRequest)
 		return
 	}
+	c, err := r.Cookie(s.oauthCookieName())
+	if err != nil || c.Value == "" {
+		log.Printf("login missing oauth cookie from %s", r.RemoteAddr)
+		http.Error(w, "invalid state", http.StatusBadRequest)
+		return
+	}
 	nonce, err := s.verifyState(r.URL.Query().Get("state"))
 	if err != nil {
 		log.Printf("login invalid state from %s", r.RemoteAddr)
 		http.Error(w, "invalid state", http.StatusBadRequest)
 		return
 	}
+	got, err := s.takeOauthTx(c.Value)
+	if err != nil || got != nonce {
+		log.Printf("login oauth tx mismatch from %s", r.RemoteAddr)
+		http.Error(w, "invalid state", http.StatusBadRequest)
+		return
+	}
+	s.setCookie(w, s.oauthCookieName(), "", -1)
 	id, err := s.idp.Exchange(r.Context(), r.URL.Query().Get("code"), nonce, s.redirectURI())
 	if err != nil {
 		log.Printf("oidc exchange: %v", err)
@@ -121,16 +144,11 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
 			s.render(w, "link", sessionPage(sess, pageData{Title: "Link account", Error: "username or password not accepted", Hint: user}))
 			return
 		}
-		if err := s.store.SetLink(sess.Iss, sess.Sub, user); err != nil {
-			log.Printf("link store pam=%s sub=%s: %v", user, sess.Sub, err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
 		if err := s.ensureUserDir(user); err != nil {
 			log.Printf("user dir: %v", err)
 		}
-		sess.PAMUser = user
-		if err := s.store.SaveSession(sess); err != nil {
+		if err := s.store.SaveLinkedSession(sess, user); err != nil {
+			log.Printf("link store pam=%s sub=%s: %v", user, sess.Sub, err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
@@ -164,7 +182,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 // CAP_FOWNER); not limited to link time.
 func (s *Server) fixCubbies() {
 	names := make(map[string]struct{})
-	users := filepath.Join(s.config().Data, "users")
+	users := s.usersDir()
 	ents, err := os.ReadDir(users)
 	if err != nil {
 		log.Printf("users/: %v", err)
@@ -186,20 +204,11 @@ func (s *Server) fixCubbies() {
 		}
 	}
 	for n := range names {
-		if !filepath.IsLocal(n) {
-			continue
-		}
 		if err := s.ensureUserDir(n); err != nil {
 			log.Printf("cubby %s: %v", n, err)
 			continue
 		}
-		dir := filepath.Join(users, n)
-		usersRoot := s.usersDir()
-		dir = filepath.Clean(dir)
-		if dir != usersRoot && !strings.HasPrefix(dir, usersRoot+string(filepath.Separator)) {
-			continue
-		}
-		s.fixCubbyTree(dir)
+		s.fixCubbyTree(filepath.Join(s.usersDir(), n))
 	}
 }
 
@@ -208,34 +217,42 @@ func (s *Server) usersDir() string {
 }
 
 func (s *Server) ensureUserDir(pamUser string) error {
-	if !pamauth.ValidUsername(pamUser) || !filepath.IsLocal(pamUser) {
+	if !pamauth.ValidUsername(pamUser) {
 		return os.ErrNotExist
 	}
 	users := s.usersDir()
 	dir := filepath.Join(users, pamUser)
-	if dir != users && !strings.HasPrefix(dir, users+string(filepath.Separator)) {
+	if _, err := osutil.Confine(users, dir); err != nil {
 		return os.ErrNotExist
 	}
 	acct, err := pamauth.Lookup(pamUser)
 	if err == nil && !pamauth.Linkable(acct) {
 		return pamauth.ErrDenied
 	}
-	if err := os.MkdirAll(dir, 0770); err != nil {
-		return err
+	usersfd, oerr := openDir(users)
+	if oerr != nil {
+		return oerr
 	}
+	defer unix.Close(usersfd)
+	if merr := unix.Mkdirat(usersfd, pamUser, 0770); merr != nil && merr != syscall.EEXIST {
+		return merr
+	}
+	fd, oerr := unix.Openat(usersfd, pamUser, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if oerr != nil {
+		return oerr
+	}
+	defer unix.Close(fd)
 	if err != nil {
-		return cubbyMode(users, dir)
+		return cubbyModeFD(fd, dir)
 	}
 	gid := acct.GID
 	if g := s.unixGid(); g >= 0 {
 		gid = g
 	}
-	if err := osutil.ChownIn(users, dir, acct.UID, gid); err != nil {
-		log.Printf("chown %s: %v", dir, err)
+	if cerr := osutil.Fchown(fd, dir, acct.UID, gid); cerr != nil {
+		log.Printf("chown %s: %v", dir, cerr)
 	}
-	// After chown the kernel clears setgid unless CAP_FSETID.
-	// chmod again so shell cp inherits group bootstash.
-	return cubbyMode(users, dir)
+	return cubbyModeFD(fd, dir)
 }
 
 func (s *Server) unixGid() int {
@@ -253,18 +270,25 @@ func (s *Server) prepareCubbyRead(pamUser, rel string) {
 		log.Printf("cubby %s: %v", pamUser, err)
 		return
 	}
-	if !filepath.IsLocal(pamUser) {
-		return
-	}
 	users := s.usersDir()
 	cubby := filepath.Join(users, pamUser)
-	if cubby != users && !strings.HasPrefix(cubby, users+string(filepath.Separator)) {
+	if _, err := osutil.Confine(users, cubby); err != nil {
 		return
 	}
 	gid := s.unixGid()
+	usersfd, err := openDir(users)
+	if err != nil {
+		return
+	}
+	defer unix.Close(usersfd)
+	fd, err := unix.Openat(usersfd, pamUser, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return
+	}
 	acc := cubby
 	if rel != "" && rel != "." {
 		if !filepath.IsLocal(rel) {
+			unix.Close(fd)
 			return
 		}
 		for _, p := range strings.Split(rel, "/") {
@@ -272,24 +296,76 @@ func (s *Server) prepareCubbyRead(pamUser, rel string) {
 				continue
 			}
 			if !filepath.IsLocal(p) {
+				unix.Close(fd)
 				return
 			}
 			next := filepath.Join(acc, p)
-			if next != users && !strings.HasPrefix(next, users+string(filepath.Separator)) {
+			if _, err := osutil.Confine(users, next); err != nil {
+				unix.Close(fd)
 				return
 			}
+			nfd, oerr := unix.Openat(fd, p, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+			unix.Close(fd)
+			if oerr != nil {
+				return
+			}
+			fd = nfd
 			acc = next
-			s.fixCubbyEntry(acc, gid)
+			s.fixCubbyFD(fd, acc, gid)
 		}
+	} else {
+		s.fixCubbyFD(fd, acc, gid)
 	}
-	if acc != users && !strings.HasPrefix(acc, users+string(filepath.Separator)) {
+	var st unix.Stat_t
+	if err := unix.Fstat(fd, &st); err != nil || st.Mode&unix.S_IFMT != unix.S_IFDIR {
+		unix.Close(fd)
 		return
 	}
-	st, err := os.Lstat(acc)
-	if err != nil || !st.IsDir() {
+	s.fixCubbyDirChildren(fd, acc, users, gid)
+	unix.Close(fd)
+}
+
+func cubbyModeFD(fd int, path string) error {
+	// Unix 02770. os.Chmod(02770) does not set setgid: Go FileMode
+	// setgid is ModeSetgid, not the 02000 bit.
+	return osutil.Fchmod(fd, path, os.ModeSetgid|0770)
+}
+
+func openDir(path string) (int, error) {
+	return unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+}
+
+// fixCubbyTree walks a cubby (start/SIGHUP). Per-request reads use
+// prepareCubbyRead instead.
+func (s *Server) fixCubbyTree(root string) {
+	users := s.usersDir()
+	rel, err := filepath.Rel(users, filepath.Clean(root))
+	if err != nil || rel == "." || !filepath.IsLocal(rel) {
 		return
 	}
-	ents, err := os.ReadDir(acc)
+	gid := s.unixGid()
+	usersfd, err := openDir(users)
+	if err != nil {
+		return
+	}
+	defer unix.Close(usersfd)
+	fd, err := unix.Openat(usersfd, rel, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return
+	}
+	defer unix.Close(fd)
+	s.fixCubbyFD(fd, filepath.Join(users, rel), gid)
+	s.fixCubbyDirChildren(fd, filepath.Join(users, rel), users, gid)
+}
+
+func (s *Server) fixCubbyDirChildren(dirfd int, path, users string, gid int) {
+	dup, err := unix.FcntlInt(uintptr(dirfd), unix.F_DUPFD_CLOEXEC, 0)
+	if err != nil {
+		return
+	}
+	f := os.NewFile(uintptr(dup), path)
+	ents, err := f.ReadDir(0)
+	f.Close()
 	if err != nil {
 		return
 	}
@@ -298,70 +374,59 @@ func (s *Server) prepareCubbyRead(pamUser, rel string) {
 		if !filepath.IsLocal(name) {
 			continue
 		}
-		child := filepath.Join(acc, name)
-		if child != users && !strings.HasPrefix(child, users+string(filepath.Separator)) {
+		child := filepath.Join(path, name)
+		if _, err := osutil.Confine(users, child); err != nil {
 			continue
 		}
-		s.fixCubbyEntry(child, gid)
-	}
-}
-
-func cubbyMode(users, dir string) error {
-	// Unix 02770. os.Chmod(02770) does not set setgid: Go FileMode
-	// setgid is ModeSetgid, not the 02000 bit.
-	return osutil.ChmodIn(users, dir, os.ModeSetgid|0770)
-}
-
-// fixCubbyTree walks a cubby (start/SIGHUP). Per-request reads use
-// prepareCubbyRead instead.
-func (s *Server) fixCubbyTree(root string) {
-	gid := s.unixGid()
-	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if e.Type()&os.ModeSymlink != 0 {
+			continue
+		}
+		flags := unix.O_RDONLY | unix.O_NOFOLLOW | unix.O_CLOEXEC
+		if e.IsDir() {
+			flags |= unix.O_DIRECTORY
+		}
+		fd, err := unix.Openat(dirfd, name, flags, 0)
 		if err != nil {
-			return nil
+			continue
 		}
-		if d.Type()&os.ModeSymlink != 0 {
-			return nil
+		if e.IsDir() {
+			s.fixCubbyFD(fd, child, gid)
+			s.fixCubbyDirChildren(fd, child, users, gid)
+		} else {
+			s.fixCubbyFD(fd, child, gid)
 		}
-		s.fixCubbyEntry(path, gid)
-		return nil
-	})
+		unix.Close(fd)
+	}
 }
 
-func (s *Server) fixCubbyEntry(path string, gid int) {
-	users := s.usersDir()
-	path = filepath.Clean(path)
-	if path != users && !strings.HasPrefix(path, users+string(filepath.Separator)) {
-		return
-	}
-	info, err := os.Lstat(path)
+func (s *Server) fixCubbyFD(fd int, path string, gid int) {
+	path, err := osutil.Confine(s.usersDir(), filepath.Clean(path))
 	if err != nil {
 		return
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
+	var st unix.Stat_t
+	if err := unix.Fstat(fd, &st); err != nil {
 		return
 	}
-	if info.IsDir() {
-		if err := cubbyMode(users, path); err != nil {
+	switch st.Mode & unix.S_IFMT {
+	case unix.S_IFDIR:
+		if err := cubbyModeFD(fd, path); err != nil {
 			log.Printf("cubby dir %s: %v", path, err)
 		}
-		return
-	}
-	if !info.Mode().IsRegular() {
-		return
-	}
-	if gid >= 0 {
-		if err := osutil.ChownIn(users, path, -1, gid); err != nil {
-			log.Printf("chown %s: %v", path, err)
+	case unix.S_IFREG:
+		if gid >= 0 {
+			if err := osutil.Fchown(fd, path, -1, gid); err != nil {
+				log.Printf("chown %s: %v", path, err)
+			}
 		}
-	}
-	perm := info.Mode().Perm()
-	want := (perm | 0040) &^ 0007
-	if perm&0100 != 0 {
-		want |= 0010
-	}
-	if err := osutil.ChmodIn(users, path, want); err != nil {
-		log.Printf("cubby file %s: %v", path, err)
+		perm := st.Mode & 0o777
+		want := (perm | 0o040) &^ 0o007
+		if perm&0o100 != 0 {
+			want |= 0o010
+		}
+		if err := osutil.Fchmod(fd, path, os.FileMode(want)); err != nil {
+			log.Printf("cubby file %s: %v", path, err)
+		}
 	}
 }
 

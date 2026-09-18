@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -239,19 +240,41 @@ func TestJailDotDotAndEncoded(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "users", "alice", "ok.txt"), []byte("ok"), 0660); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "secret"), []byte("root:x"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	for _, path := range []string{
-		"/home/../alice/ok.txt",
-		"/home/%2e%2e/ok.txt",
-		"/home/foo/%2e%2e/%2e%2e/etc/passwd",
+		"/home/ok.txt",
+		"/home/./ok.txt",
+		"/home/foo/../ok.txt",
 	} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		req.AddCookie(c)
 		rr := do(s, req)
-		if rr.Code == http.StatusOK && strings.Contains(rr.Body.String(), "ok") && path != "/home/../alice/ok.txt" {
-			// decoded .. is rejected; lexical leftover may 404/400/403
+		if rr.Code != http.StatusOK || rr.Body.String() != "ok" {
+			t.Fatalf("allow %s: %d %q", path, rr.Code, rr.Body.String())
 		}
-		if rr.Code == 200 && strings.Contains(rr.Body.String(), "root:") {
+	}
+	for _, path := range []string{
+		"/home/../alice/ok.txt",
+		"/home/../secret",
+		"/home/%2e%2e/ok.txt",
+		"/home/%2e%2e/secret",
+		"/home/foo/%2e%2e/%2e%2e/etc/passwd",
+		"/home/foo/../../secret",
+		"/home/ok.txt/../../../secret",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.AddCookie(c)
+		rr := do(s, req)
+		if rr.Code == http.StatusOK && rr.Body.String() == "ok" && path == "/home/../alice/ok.txt" {
+			t.Fatalf("%s served by leaving /home", path)
+		}
+		if strings.Contains(rr.Body.String(), "root:") {
 			t.Fatalf("%s leaked: %s", path, rr.Body.String())
+		}
+		if rr.Code == http.StatusOK && rr.Body.String() == "root:x" {
+			t.Fatalf("%s read outside cubby", path)
 		}
 	}
 }
@@ -360,26 +383,53 @@ func TestRange(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "users", "alice", "x.bin"), body, 0660); err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodGet, "/home/x.bin", nil)
-	req.Header.Set("Range", "bytes=0-2")
-	req.AddCookie(c)
-	rr := do(s, req)
-	if rr.Code != http.StatusPartialContent || rr.Body.String() != "abc" {
-		t.Fatalf("first bytes: %d %q", rr.Code, rr.Body.String())
+	full := string(body)
+	tests := []struct {
+		hdr      string
+		wantCode int
+		wantBody string
+		allow200 bool
+	}{
+		{"bytes=0-2", http.StatusPartialContent, "abc", false},
+		{"bytes=-3", http.StatusPartialContent, "hij", false},
+		{"bytes=99-100", http.StatusRequestedRangeNotSatisfiable, "", false},
+		{"bytes=0-0", http.StatusPartialContent, "a", false},
+		{"bytes=0-", http.StatusPartialContent, full, true},
+		{"bytes=-1", http.StatusPartialContent, "j", false},
+		{"bytes=0-999999999999999999", http.StatusPartialContent, full, true},
+		{"bytes=5-4", http.StatusRequestedRangeNotSatisfiable, "", false},
+		{"bytes=0-1,3-4", http.StatusPartialContent, "", true},
+		{"bytes=nonesuch", http.StatusRequestedRangeNotSatisfiable, "", true},
+		{"", http.StatusOK, full, false},
 	}
-	req = httptest.NewRequest(http.MethodGet, "/home/x.bin", nil)
-	req.Header.Set("Range", "bytes=-3")
-	req.AddCookie(c)
-	rr = do(s, req)
-	if rr.Code != http.StatusPartialContent || rr.Body.String() != "hij" {
-		t.Fatalf("suffix: %d %q", rr.Code, rr.Body.String())
-	}
-	req = httptest.NewRequest(http.MethodGet, "/home/x.bin", nil)
-	req.Header.Set("Range", "bytes=99-100")
-	req.AddCookie(c)
-	rr = do(s, req)
-	if rr.Code != http.StatusRequestedRangeNotSatisfiable {
-		t.Fatalf("invalid range: %d", rr.Code)
+	for _, tc := range tests {
+		req := httptest.NewRequest(http.MethodGet, "/home/x.bin", nil)
+		if tc.hdr != "" {
+			req.Header.Set("Range", tc.hdr)
+		}
+		req.AddCookie(c)
+		rr := do(s, req)
+		code := rr.Code
+		if code == http.StatusInternalServerError {
+			t.Fatalf("%q: 500 %s", tc.hdr, rr.Body.String())
+		}
+		ok := code == tc.wantCode || (tc.allow200 && code == http.StatusOK)
+		if !ok {
+			t.Fatalf("%q: %d want %d", tc.hdr, code, tc.wantCode)
+		}
+		got := rr.Body.String()
+		if code == http.StatusOK {
+			if got != full {
+				t.Fatalf("%q 200 body %q", tc.hdr, got)
+			}
+			continue
+		}
+		if tc.wantBody != "" && got != tc.wantBody {
+			t.Fatalf("%q body %q want %q", tc.hdr, got, tc.wantBody)
+		}
+		if strings.Contains(got, "root:") {
+			t.Fatalf("%q leaked %q", tc.hdr, got)
+		}
 	}
 }
 
@@ -532,29 +582,110 @@ func TestUID0DoesNotLink(t *testing.T) {
 	}
 }
 
-func TestLoginStartsOIDC(t *testing.T) {
-	s, _, _ := testServer(t)
-	req := httptest.NewRequest(http.MethodGet, "/login?provider=google", nil)
-	rr := do(s, req)
+func googleLogin(t *testing.T, s *Server) (state string, tx *http.Cookie) {
+	t.Helper()
+	rr := do(s, httptest.NewRequest(http.MethodGet, "/login?provider=google", nil))
 	if rr.Code != http.StatusFound || !strings.Contains(rr.Header().Get("Location"), "accounts.google.com") {
-		t.Fatalf("%d %s", rr.Code, rr.Header().Get("Location"))
+		t.Fatalf("login: %d %s", rr.Code, rr.Header().Get("Location"))
 	}
+	loc, err := url.Parse(rr.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state = loc.Query().Get("state")
+	if state == "" {
+		t.Fatal("missing state")
+	}
+	tx = cookieNamed(rr, s.oauthCookieName())
+	if tx == nil || tx.Value == "" {
+		t.Fatal("missing oauth cookie")
+	}
+	return state, tx
+}
+
+func oauthCallback(state string, tx *http.Cookie) *http.Request {
+	req := httptest.NewRequest(http.MethodGet, "/oidc/callback?state="+state+"&code=zz", nil)
+	if tx != nil {
+		req.AddCookie(tx)
+	}
+	return req
 }
 
 func TestCallbackSetsCookie(t *testing.T) {
 	s, _, _ := testServer(t)
-	nonce := "n"
-	state, err := s.signState(nonce)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req := httptest.NewRequest(http.MethodGet, "/oidc/callback?state="+state+"&code=zz", nil)
-	rr := do(s, req)
+	state, tx := googleLogin(t, s)
+	rr := do(s, oauthCallback(state, tx))
 	if rr.Code != http.StatusFound {
 		t.Fatalf("%d %s", rr.Code, rr.Body.String())
 	}
 	if loc := rr.Header().Get("Location"); loc != "/link" {
 		t.Fatalf("location %s", loc)
+	}
+	if cookieNamed(rr, s.cookieName()) == nil {
+		t.Fatal("missing session cookie")
+	}
+}
+
+func TestCallbackRejects(t *testing.T) {
+	tests := []struct {
+		name string
+		prep func(*testing.T, *Server) *http.Request
+	}{
+		{"without cookie", func(t *testing.T, s *Server) *http.Request {
+			state, _ := googleLogin(t, s)
+			return oauthCallback(state, nil)
+		}},
+		{"wrong cookie", func(t *testing.T, s *Server) *http.Request {
+			state, _ := googleLogin(t, s)
+			_, tx2 := googleLogin(t, s)
+			return oauthCallback(state, tx2)
+		}},
+		{"expired", func(t *testing.T, s *Server) *http.Request {
+			state, tx := googleLogin(t, s)
+			nonce, err := s.verifyState(state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.putOauthTx(tx.Value, nonce, time.Now().Add(-time.Second))
+			return oauthCallback(state, tx)
+		}},
+		{"attacker state", func(t *testing.T, s *Server) *http.Request {
+			state, _ := googleLogin(t, s)
+			_, victim := googleLogin(t, s)
+			return oauthCallback(state, victim)
+		}},
+		{"no login", func(t *testing.T, s *Server) *http.Request {
+			state, err := s.signState("n")
+			if err != nil {
+				t.Fatal(err)
+			}
+			return oauthCallback(state, nil)
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _, _ := testServer(t)
+			rr := do(s, tc.prep(t, s))
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("%d %s", rr.Code, rr.Body.String())
+			}
+			if cookieNamed(rr, s.cookieName()) != nil {
+				t.Fatal("session cookie")
+			}
+		})
+	}
+}
+
+func TestCallbackRejectsReplay(t *testing.T) {
+	s, _, _ := testServer(t)
+	state, tx := googleLogin(t, s)
+	rr := do(s, oauthCallback(state, tx))
+	if rr.Code != http.StatusFound {
+		t.Fatalf("first: %d %s", rr.Code, rr.Body.String())
+	}
+	rr = do(s, oauthCallback(state, tx))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("replay: %d %s", rr.Code, rr.Body.String())
 	}
 }
 
@@ -821,6 +952,42 @@ func TestPutOverwrite(t *testing.T) {
 	if string(got) != "two" {
 		t.Fatalf("got %q", got)
 	}
+}
+
+func TestPutFailurePreservesExisting(t *testing.T) {
+	s, st, _ := testServer(t)
+	c := linkedSession(t, s, st, "alice")
+	req := httptest.NewRequest(http.MethodPut, "/home/keep.txt", strings.NewReader("keep-me"))
+	req.Header.Set("Origin", "https://stash.test")
+	req.AddCookie(c)
+	rr := do(s, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("seed: %d %s", rr.Code, rr.Body.String())
+	}
+	req = httptest.NewRequest(http.MethodPut, "/home/keep.txt", &failAfter{rest: []byte("xxxx"), err: io.ErrUnexpectedEOF})
+	req.Header.Set("Origin", "https://stash.test")
+	req.AddCookie(c)
+	_ = do(s, req)
+	req = httptest.NewRequest(http.MethodGet, "/home/keep.txt", nil)
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusOK || rr.Body.String() != "keep-me" {
+		t.Fatalf("preserved: %d %q", rr.Code, rr.Body.String())
+	}
+}
+
+type failAfter struct {
+	rest []byte
+	err  error
+}
+
+func (f *failAfter) Read(p []byte) (int, error) {
+	if len(f.rest) == 0 {
+		return 0, f.err
+	}
+	n := copy(p, f.rest)
+	f.rest = f.rest[n:]
+	return n, nil
 }
 
 func TestDeleteOwnFile(t *testing.T) {

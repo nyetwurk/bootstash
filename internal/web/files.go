@@ -200,14 +200,12 @@ func (s *Server) servePut(w http.ResponseWriter, r *http.Request, root *jail.Roo
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, s.config().MaxUpload)
-	f, err := root.Create(rel, 0660)
-	if err != nil {
+	if err := root.Replace(rel, 0660, r.Body); err != nil {
+		if isUploadTooLarge(err) {
+			http.Error(w, "upload failed", http.StatusRequestEntityTooLarge)
+			return
+		}
 		statusFromJail(w, err)
-		return
-	}
-	defer f.Close()
-	if _, err := io.Copy(f, r.Body); err != nil {
-		http.Error(w, "upload failed", http.StatusRequestEntityTooLarge)
 		return
 	}
 	s.chownRel(root, rel, sess.PAMUser)
@@ -252,14 +250,12 @@ func (s *Server) servePost(w http.ResponseWriter, r *http.Request, root *jail.Ro
 			return
 		}
 		dest := path.Join(rel, name)
-		f, err := root.Create(dest, 0660)
-		if err != nil {
+		if err := root.Replace(dest, 0660, fh); err != nil {
+			if isUploadTooLarge(err) {
+				http.Error(w, "upload failed", http.StatusRequestEntityTooLarge)
+				return
+			}
 			statusFromJail(w, err)
-			return
-		}
-		defer f.Close()
-		if _, err := io.Copy(f, fh); err != nil {
-			http.Error(w, "upload failed", http.StatusRequestEntityTooLarge)
 			return
 		}
 		s.chownRel(root, dest, sess.PAMUser)
@@ -443,6 +439,14 @@ func entryName(name string) (string, bool) {
 		return "", false
 	}
 	return name, true
+}
+
+func isUploadTooLarge(err error) bool {
+	var maxErr *http.MaxBytesError
+	if errors.As(err, &maxErr) {
+		return true
+	}
+	return errors.Is(err, io.ErrUnexpectedEOF)
 }
 
 func statusFromJail(w http.ResponseWriter, err error) {

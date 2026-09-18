@@ -5,6 +5,8 @@
 package jail
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -62,11 +64,7 @@ func (r *Root) Open(rel string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	name := "."
-	if filepath.IsLocal(rel) {
-		name = rel
-	}
-	return os.NewFile(uintptr(fd), name), nil
+	return os.NewFile(uintptr(fd), fileName(rel)), nil
 }
 
 // Create truncates or creates a file relative to the jail.
@@ -75,21 +73,54 @@ func (r *Root) Create(rel string, perm os.FileMode) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	name := "."
-	if filepath.IsLocal(rel) {
-		name = rel
-	}
-	f := os.NewFile(uintptr(fd), name)
-	from := os.FileMode(0)
-	if st, err := f.Stat(); err == nil {
-		from = st.Mode()
-	}
-	if err := f.Chmod(perm); err != nil {
+	f := os.NewFile(uintptr(fd), fileName(rel))
+	if err := chmodNote(f, r.path(rel), perm); err != nil {
 		f.Close()
 		return nil, err
 	}
-	osutil.NoteChmod(r.path(rel), from, perm)
 	return f, nil
+}
+
+// Replace writes body to rel atomically: a sibling temp file, then
+// renameat over the destination. A failed copy leaves the old file.
+func (r *Root) Replace(rel string, perm os.FileMode, body io.Reader) error {
+	dirfd, name, err := r.parentOf(rel)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(dirfd)
+	var rnd [8]byte
+	if _, err := rand.Read(rnd[:]); err != nil {
+		return err
+	}
+	tmp := ".bootstash-" + hex.EncodeToString(rnd[:])
+	fd, err := unix.Openat(dirfd, tmp, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, uint32(perm&0777))
+	if err != nil {
+		return err
+	}
+	f := os.NewFile(uintptr(fd), tmp)
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = unix.Unlinkat(dirfd, tmp, 0)
+		}
+	}()
+	if _, err := io.Copy(f, body); err != nil {
+		f.Close()
+		return err
+	}
+	if err := chmodNote(f, r.path(rel), perm); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := unix.Renameat(dirfd, tmp, dirfd, name); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
 }
 
 // Mkdir creates a directory relative to the jail.
@@ -180,6 +211,25 @@ func (r *Root) Chown(rel string, uid, gid int) error {
 		tg = fg
 	}
 	osutil.NoteChown(r.path(rel), fu, fg, tu, tg)
+	return nil
+}
+
+func fileName(rel string) string {
+	if filepath.IsLocal(rel) {
+		return rel
+	}
+	return "."
+}
+
+func chmodNote(f *os.File, path string, perm os.FileMode) error {
+	from := os.FileMode(0)
+	if st, err := f.Stat(); err == nil {
+		from = st.Mode()
+	}
+	if err := f.Chmod(perm); err != nil {
+		return err
+	}
+	osutil.NoteChmod(path, from, perm)
 	return nil
 }
 

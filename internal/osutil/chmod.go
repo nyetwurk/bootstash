@@ -22,10 +22,9 @@ func Confine(root, path string) (string, error) {
 
 // ChmodIn is Chmod after the path is shown to stay under root.
 func ChmodIn(root, path string, mode os.FileMode) error {
-	root = filepath.Clean(root)
-	path = filepath.Clean(path)
-	if path != root && !strings.HasPrefix(path, root+string(filepath.Separator)) {
-		return os.ErrInvalid
+	path, err := Confine(root, path)
+	if err != nil {
+		return err
 	}
 	return Chmod(path, mode)
 }

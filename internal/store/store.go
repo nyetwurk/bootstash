@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/nyet/bootstash/internal/osutil"
+	"golang.org/x/sys/unix"
 )
 
 // Session is a server-side login.
@@ -68,18 +69,24 @@ func (s *Store) EnsureCryptoKey(existing []byte) ([]byte, error) {
 	if len(existing) >= 32 {
 		return existing, nil
 	}
-	path := filepath.Join(s.dir, "crypto.key")
-	if b, err := os.ReadFile(path); err == nil && len(b) >= 32 {
-		return b, nil
-	}
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return nil, err
-	}
-	if err := s.writeStateFile(path, b); err != nil {
-		return nil, err
-	}
-	return b, nil
+	var out []byte
+	err := s.withLock(func() error {
+		path := filepath.Join(s.dir, "crypto.key")
+		if b, err := os.ReadFile(path); err == nil && len(b) >= 32 {
+			out = b
+			return nil
+		}
+		b := make([]byte, 32)
+		if _, err := rand.Read(b); err != nil {
+			return err
+		}
+		if err := s.writeStateFile(path, b); err != nil {
+			return err
+		}
+		out = b
+		return nil
+	})
+	return out, err
 }
 
 // CreateSession stores a new session and returns it.
@@ -95,12 +102,15 @@ func (s *Store) CreateSession(iss, sub, email string, ttl time.Duration) (*Sessi
 		Email:   email,
 		Expires: time.Now().Add(ttl),
 	}
-	if pam, ok, err := s.LookupLink(iss, sub); err != nil {
-		return nil, err
-	} else if ok {
-		sess.PAMUser = pam
-	}
-	if err := s.saveSession(sess); err != nil {
+	err = s.withLock(func() error {
+		if pam, ok, err := s.lookupLinkLocked(iss, sub); err != nil {
+			return err
+		} else if ok {
+			sess.PAMUser = pam
+		}
+		return s.saveSession(sess)
+	})
+	if err != nil {
 		return nil, err
 	}
 	return sess, nil
@@ -129,7 +139,9 @@ func (s *Store) GetSession(id string) (*Session, error) {
 
 // SaveSession writes an existing session (link updates).
 func (s *Store) SaveSession(sess *Session) error {
-	return s.saveSession(sess)
+	return s.withLock(func() error {
+		return s.saveSession(sess)
+	})
 }
 
 // DeleteSession removes a session file. Missing is not an error.
@@ -167,10 +179,42 @@ func (s *Store) sessionPath(id string) (string, bool) {
 	return filepath.Join(s.dir, "sessions-"+id+".json"), true
 }
 
-// LookupLink returns the PAM user for an OIDC subject.
-func (s *Store) LookupLink(iss, sub string) (string, bool, error) {
+func (s *Store) lockPath() string {
+	return filepath.Join(s.dir, ".lock")
+}
+
+// withLock is an in-process mutex plus flock so bootstashd and
+// bootstash unlink cannot interleave a links.json read-modify-write.
+func (s *Store) withLock(fn func() error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	f, err := os.OpenFile(s.lockPath(), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX); err != nil {
+		return err
+	}
+	defer func() { _ = unix.Flock(int(f.Fd()), unix.LOCK_UN) }()
+	_ = osutil.Chmod(s.lockPath(), 0600)
+	_ = s.chownToState(s.lockPath())
+	return fn()
+}
+
+// LookupLink returns the PAM user for an OIDC subject.
+func (s *Store) LookupLink(iss, sub string) (string, bool, error) {
+	var pam string
+	var ok bool
+	err := s.withLock(func() error {
+		var err error
+		pam, ok, err = s.lookupLinkLocked(iss, sub)
+		return err
+	})
+	return pam, ok, err
+}
+
+func (s *Store) lookupLinkLocked(iss, sub string) (string, bool, error) {
 	lf, err := s.readLinks()
 	if err != nil {
 		return "", false, err
@@ -185,49 +229,71 @@ func (s *Store) LookupLink(iss, sub string) (string, bool, error) {
 
 // ListLinks returns OIDC→PAM mappings. Rows with an empty PAM name are omitted.
 func (s *Store) ListLinks() ([]Link, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	lf, err := s.readLinks()
-	if err != nil {
-		return nil, err
-	}
-	out := make([]Link, 0, len(lf.Links))
-	for _, l := range lf.Links {
-		if l.PAMUser == "" {
-			continue
+	var out []Link
+	err := s.withLock(func() error {
+		lf, err := s.readLinks()
+		if err != nil {
+			return err
 		}
-		out = append(out, l)
-	}
-	return out, nil
+		out = make([]Link, 0, len(lf.Links))
+		for _, l := range lf.Links {
+			if l.PAMUser == "" {
+				continue
+			}
+			out = append(out, l)
+		}
+		return nil
+	})
+	return out, err
 }
 
 // LinkedPAMUsers returns distinct PAM names from the link table.
 func (s *Store) LinkedPAMUsers() ([]string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	lf, err := s.readLinks()
-	if err != nil {
-		return nil, err
-	}
-	seen := make(map[string]struct{})
 	var out []string
-	for _, l := range lf.Links {
-		if l.PAMUser == "" {
-			continue
+	err := s.withLock(func() error {
+		lf, err := s.readLinks()
+		if err != nil {
+			return err
 		}
-		if _, ok := seen[l.PAMUser]; ok {
-			continue
+		seen := make(map[string]struct{})
+		for _, l := range lf.Links {
+			if l.PAMUser == "" {
+				continue
+			}
+			if _, ok := seen[l.PAMUser]; ok {
+				continue
+			}
+			seen[l.PAMUser] = struct{}{}
+			out = append(out, l.PAMUser)
 		}
-		seen[l.PAMUser] = struct{}{}
-		out = append(out, l.PAMUser)
-	}
-	return out, nil
+		return nil
+	})
+	return out, err
 }
 
 // SetLink stores (iss,sub) -> pamUser. The subject maps to at most one user.
 func (s *Store) SetLink(iss, sub, pamUser string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	return s.withLock(func() error {
+		return s.setLinkLocked(iss, sub, pamUser)
+	})
+}
+
+// SaveLinkedSession writes the link and session together so unlink cannot
+// leave a PAM session after dropping the map.
+func (s *Store) SaveLinkedSession(sess *Session, pamUser string) error {
+	if sess == nil {
+		return os.ErrInvalid
+	}
+	return s.withLock(func() error {
+		if err := s.setLinkLocked(sess.Iss, sess.Sub, pamUser); err != nil {
+			return err
+		}
+		sess.PAMUser = pamUser
+		return s.saveSession(sess)
+	})
+}
+
+func (s *Store) setLinkLocked(iss, sub, pamUser string) error {
 	lf, err := s.readLinks()
 	if err != nil {
 		return err
@@ -246,51 +312,35 @@ func (s *Store) SetLink(iss, sub, pamUser string) error {
 	return s.writeLinks(lf)
 }
 
-// DeleteLink removes a subject mapping.
-func (s *Store) DeleteLink(iss, sub string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	lf, err := s.readLinks()
-	if err != nil {
-		return err
-	}
-	out := lf.Links[:0]
-	for _, l := range lf.Links {
-		if l.Issuer == iss && l.Subject == sub {
-			continue
-		}
-		out = append(out, l)
-	}
-	lf.Links = out
-	return s.writeLinks(lf)
-}
-
 // UnlinkPAM drops every (issuer, sub) mapped to pam and clears PAMUser
 // on matching sessions. The cubby on disk is left alone.
 func (s *Store) UnlinkPAM(pam string) ([]Link, int, error) {
 	if pam == "" {
 		return nil, 0, os.ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	lf, err := s.readLinks()
-	if err != nil {
-		return nil, 0, err
-	}
 	var removed []Link
-	out := lf.Links[:0]
-	for _, l := range lf.Links {
-		if l.PAMUser == pam {
-			removed = append(removed, l)
-			continue
+	var n int
+	err := s.withLock(func() error {
+		lf, err := s.readLinks()
+		if err != nil {
+			return err
 		}
-		out = append(out, l)
-	}
-	lf.Links = out
-	if err := s.writeLinks(lf); err != nil {
-		return nil, 0, err
-	}
-	n, err := s.clearSessionPAMLocked(pam, removed)
+		removed = nil
+		out := lf.Links[:0]
+		for _, l := range lf.Links {
+			if l.PAMUser == pam {
+				removed = append(removed, l)
+				continue
+			}
+			out = append(out, l)
+		}
+		lf.Links = out
+		if err := s.writeLinks(lf); err != nil {
+			return err
+		}
+		n, err = s.clearSessionPAMLocked(pam, removed)
+		return err
+	})
 	return removed, n, err
 }
 

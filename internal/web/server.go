@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -32,6 +33,12 @@ import (
 )
 
 const sessionTTL = 7 * 24 * time.Hour
+const oauthTTL = 15 * time.Minute
+
+type oauthTx struct {
+	nonce string
+	exp   time.Time
+}
 
 // IDP is the OIDC authorization-code provider (Google in v1).
 type IDP interface {
@@ -48,6 +55,8 @@ type Server struct {
 	cert    atomic.Value // *tls.Certificate
 	manager *bind.Manager
 	key     []byte
+	oauthMu sync.Mutex
+	oauthTx map[string]oauthTx
 }
 
 // New constructs a server. cfg must already be Ready() for production start.
@@ -181,10 +190,7 @@ func (s *Server) session(r *http.Request) *store.Session {
 }
 
 func (s *Server) cookieName() string {
-	if strings.HasPrefix(s.config().PublicURL, "https://") {
-		return "__Host-bootstash"
-	}
-	return "bootstash"
+	return s.hostCookie("__Host-bootstash", "bootstash")
 }
 
 func (s *Server) setSessionCookie(w http.ResponseWriter, sess *store.Session) {
@@ -206,10 +212,7 @@ func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 }
 
 func (s *Server) noticeCookieName() string {
-	if strings.HasPrefix(s.config().PublicURL, "https://") {
-		return "__Host-bootstash-notice"
-	}
-	return "bootstash_notice"
+	return s.hostCookie("__Host-bootstash-notice", "bootstash_notice")
 }
 
 func (s *Server) setNotice(w http.ResponseWriter, key string) {
@@ -229,10 +232,7 @@ func (s *Server) takeNotice(w http.ResponseWriter, r *http.Request) string {
 }
 
 func (s *Server) downloadCookieName() string {
-	if strings.HasPrefix(s.config().PublicURL, "https://") {
-		return "__Host-bootstash-dl"
-	}
-	return "bootstash_dl"
+	return s.hostCookie("__Host-bootstash-dl", "bootstash_dl")
 }
 
 func (s *Server) setDownloadMark(w http.ResponseWriter, rel string) {
@@ -272,6 +272,40 @@ func (s *Server) setCookie(w http.ResponseWriter, name, value string, maxAge int
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   maxAge,
 	})
+}
+
+func (s *Server) oauthCookieName() string {
+	return s.hostCookie("__Host-bootstash-oauth", "bootstash_oauth")
+}
+
+func (s *Server) hostCookie(httpsName, httpName string) string {
+	if strings.HasPrefix(s.config().PublicURL, "https://") {
+		return httpsName
+	}
+	return httpName
+}
+
+func (s *Server) putOauthTx(id, nonce string, exp time.Time) {
+	s.oauthMu.Lock()
+	defer s.oauthMu.Unlock()
+	if s.oauthTx == nil {
+		s.oauthTx = make(map[string]oauthTx)
+	}
+	s.oauthTx[id] = oauthTx{nonce: nonce, exp: exp}
+}
+
+func (s *Server) takeOauthTx(id string) (string, error) {
+	s.oauthMu.Lock()
+	defer s.oauthMu.Unlock()
+	tx, ok := s.oauthTx[id]
+	if !ok {
+		return "", fmt.Errorf("no oauth tx")
+	}
+	delete(s.oauthTx, id)
+	if time.Now().After(tx.exp) {
+		return "", fmt.Errorf("oauth tx expired")
+	}
+	return tx.nonce, nil
 }
 
 func (s *Server) redirectURI() string {

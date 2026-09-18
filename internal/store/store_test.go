@@ -6,6 +6,7 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -188,5 +189,98 @@ func TestEnsureCryptoKey(t *testing.T) {
 	}
 	if string(k1) != string(k2) {
 		t.Fatal("key should persist")
+	}
+}
+
+func TestTwoStoresSeeEachOthersLinks(t *testing.T) {
+	dir := t.TempDir()
+	st1, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st2, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	iss := "https://accounts.google.com"
+	if err := st1.SetLink(iss, "sub-1", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	pam, ok, err := st2.LookupLink(iss, "sub-1")
+	if err != nil || !ok || pam != "alice" {
+		t.Fatalf("st2 pam=%s ok=%v err=%v", pam, ok, err)
+	}
+	sess, err := st1.CreateSession(iss, "sub-1", "a@b.c", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess.PAMUser = "alice"
+	if err := st1.SaveSession(sess); err != nil {
+		t.Fatal(err)
+	}
+	removed, n, err := st2.UnlinkPAM("alice")
+	if err != nil || n != 1 || len(removed) != 1 {
+		t.Fatalf("unlink removed=%d sessions=%d err=%v", len(removed), n, err)
+	}
+	if _, ok, err := st1.LookupLink(iss, "sub-1"); err != nil || ok {
+		t.Fatalf("st1 still linked ok=%v err=%v", ok, err)
+	}
+	got, err := st1.GetSession(sess.ID)
+	if err != nil || got.PAMUser != "" {
+		t.Fatalf("session %+v %v", got, err)
+	}
+}
+
+func TestCreateSessionUnlinkRace(t *testing.T) {
+	dir := t.TempDir()
+	st1, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st2, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	iss := "https://accounts.google.com"
+	if err := st1.SetLink(iss, "sub-1", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, _ = st1.CreateSession(iss, "sub-1", "a@b.c", time.Hour)
+		}()
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-start
+		_, _, _ = st2.UnlinkPAM("alice")
+	}()
+	close(start)
+	wg.Wait()
+	if _, linked, err := st1.LookupLink(iss, "sub-1"); err != nil || linked {
+		t.Fatalf("link remains linked=%v err=%v", linked, err)
+	}
+	ents, err := os.ReadDir(st1.Dir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range ents {
+		name := e.Name()
+		if len(name) < 14 || name[:9] != "sessions-" || name[len(name)-5:] != ".json" {
+			continue
+		}
+		got, err := st1.GetSession(name[9 : len(name)-5])
+		if err != nil {
+			continue
+		}
+		if got.PAMUser == "alice" {
+			t.Fatalf("session %s still pam=alice after unlink", got.ID)
+		}
 	}
 }
