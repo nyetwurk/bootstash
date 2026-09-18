@@ -26,10 +26,14 @@ README “Expectations.”
   link. Do not `useradd`. Do not grow a password/app-user table
 - Google only in v1. A later IdP is a new adapter + helper-owned keys
   under `/etc/bootstash/`, not a new session model
-- Not ACME. HTTPS uses `TLS_CERT` / `TLS_KEY`, or
-  `/etc/bootstash/certs/<CERT_NAME>/`. `PUBLIC_URL` defaults from
-  `CERT_NAME` (hook picks the only `live/` lineage when unset). Do
-  not read `/etc/letsencrypt/live`. Never copy every `live/` cert.
+- Not ACME. Packaged `TLS=auto` (`maybe` is the same): HTTPS from
+  `TLS_CERT` / `TLS_KEY` or `/etc/bootstash/certs/<CERT_NAME>/` when
+  both PEMs exist, otherwise HTTP. `TLS=no`: HTTP on TCP binds; the
+  hook does not copy `live/` and removes dest PEMs under `certs/`
+  (unused private key; `live/` stays). `PUBLIC_URL` defaults from
+  `CERT_NAME` (hook picks the only `live/` lineage when unset;
+  `http` when `TLS=no`). Do not read `/etc/letsencrypt/live`. Never
+  copy every `live/` cert.
 - Not `/etc/bootstash.d/`. Not systemd `EnvironmentFile=` or empty
   `ConfigurationDirectory=`
 - `ADMIN_USERS` is a PAM-name seam with **no extra HTTP powers** in v1
@@ -38,12 +42,13 @@ README “Expectations.”
 
 Load order: built-in (embed of `internal/config/default-dist`) /
 `/usr/lib/bootstash/default-dist` (not a
-conffile), then `/etc/default/bootstash` (conffile; commented `DATA`, `BIND`,
+conffile; **every** key, including empty/derived), then
+`/etc/default/bootstash` (conffile; commented `DATA`, `BIND`,
 `PUBLIC_URL`, `ADMIN_USERS`; operator diffs), then
 `/etc/bootstash/oidc-google.json` (helper-written; not a
 conffile). Later scalars win. If the operator file mentions `BIND` at
 all, those lines replace the packaged listen list. Secrets **cannot**
-change `BIND`.
+change `BIND`. Do not invent a second set of scalar defaults in Go.
 
 `bootstash provision-google` installs the Google console’s Web
 application client JSON as `/etc/bootstash/oidc-google.json` (`0640`
@@ -57,7 +62,8 @@ config**. Same for a bad TLS pair (keep the previous cert).
 If `CERT_NAME` is unset, the hook (root, can read `live/`) chooses
 one: operator `CERT_NAME`, `PUBLIC_URL` host, `live/$(hostname
 -f)`, or the only `live/` lineage. It copies that one directory
-and may insert commented `# CERT_NAME=` and `# PUBLIC_URL=`
+unless `TLS=no` (then it removes dest PEMs under `certs/`). It may
+insert commented `# CERT_NAME=` and `# PUBLIC_URL=`
 hints after the operator-file header (`hostname -f` or only
 lineage). `PUBLIC_URL` is the value the daemon would derive. The daemon still derives both
 unless the operator uncomments them. The hook does not rewrite
@@ -77,14 +83,17 @@ alias. Operators do not cron the hook.
 `SO_BINDTODEVICE` / `CAP_CHOWN` / `CAP_FSETID` / `CAP_FOWNER`
 (`chown` otherwise drops cubby setgid). Do not set `NoNewPrivileges=` (the
 PAM helper is setuid). umask `007`. Startup log: version,
-origin, binds, admins if set — never client secrets. Package
-configure never enables the unit and never stops it on upgrade.
-After cert sync it `try-restart`s if already active, or starts if
+origin, binds, `tls=no` when TLS is off, admins if set — never client
+secrets. Package configure never enables the unit and never stops
+it on upgrade.
+After cert sync (copy, or dest PEM removal when `TLS=no`) it
+`try-restart`s if already active, or starts if
 `bootstash check-config` would pass (same as `bootstashd -t`).
 First install without OIDC stays down.
 
-Honor `X-Forwarded-Proto` / `X-Forwarded-Host` only on **HTTP** binds
-and only from a **trusted hop**. Ignore them on HTTPS.
+Honor `X-Forwarded-Proto` / `X-Forwarded-Host` on requests that are
+not already TLS (ignored when the socket is HTTPS). v1 does not
+check a trusted hop.
 
 ## Bind
 

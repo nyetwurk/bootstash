@@ -7,6 +7,7 @@
 # BIND=tun0:8443
 # PUBLIC_URL=https://stash.example
 # CERT_NAME=stash.example
+# TLS=no
 # TLS_CERT=/etc/bootstash/certs/stash.example/fullchain.pem
 # TLS_KEY=/etc/bootstash/certs/stash.example/privkey.pem
 # ADMIN_USERS=alice

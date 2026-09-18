@@ -141,6 +141,42 @@ func TestHTTPSReloadCert(t *testing.T) {
 	resp.Body.Close()
 }
 
+func TestHTTPSThenHTTP(t *testing.T) {
+	dir := t.TempDir()
+	cert, key := writeTestCert(t, dir, "one")
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "ok")
+	})
+	c, err := tls.LoadX509KeyPair(cert, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewManager(handler, "", func() (*tls.Certificate, error) { return &c, nil })
+	defer m.Close(context.Background())
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	sp, err := ParseSpec("127.0.0.1:" + strconv.Itoa(port))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Sync([]Spec{*sp}, true, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Sync([]Spec{*sp}, false, true); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.Get("http://127.0.0.1:" + strconv.Itoa(port) + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+}
+
 func writeTestCert(t *testing.T, dir, cn string) (string, string) {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

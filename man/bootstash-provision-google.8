@@ -15,9 +15,13 @@ at each step, including the exact OIDC redirect URI
 .RB ( $PUBLIC_URL/oidc/callback )
 from the loaded config. It says whether that URI is
 .B https
-(PEMs found; BIND port stays) or
+(daemon would speak HTTPS: PEMs and not
+.BR TLS=no ;
+BIND port stays) or
 .B http
-(no certs yet), and that finding certs does not move
+(no certs, or
+.BR TLS=no ),
+and that finding certs does not move
 .B BIND
 to 443.
 Then copies the downloaded Web application client JSON

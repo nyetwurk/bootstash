@@ -5,6 +5,8 @@
 # Certbot deploy hook. Copies one chosen lineage out of
 # /etc/letsencrypt/live into /etc/bootstash/certs/<name>.
 # Not an ACME client. Does not copy every live/ cert.
+# TLS=no: do not copy; remove dest PEMs (unused private key).
+# live/ is untouched.
 #
 #   (no args)  RENEWED_LINEAGE if it is the chosen name
 #   sync       copy the chosen live/ lineage (package configure)
@@ -39,6 +41,36 @@ last_key() {
 		val=$v
 	done <"$op"
 	printf '%s' "$val"
+}
+
+tls_off() {
+	tls=$(last_key TLS)
+	tls=$(printf '%s' "$tls" | tr 'A-Z' 'a-z')
+	case $tls in
+	0 | false | no | off) return 0 ;;
+	esac
+	# Unset, auto/maybe, yes/true/on/1, or unknown: do not purge.
+	return 1
+}
+
+# Dest PEMs are 0640 root:bootstash. If the daemon is not speaking
+# HTTPS, do not leave privkey.pem there. Skip symlinks. live/ stays.
+purge_dest_certs() {
+	[ -d "$certs" ] || return 0
+	for d in "$certs"/*; do
+		[ -e "$d" ] || continue
+		[ -L "$d" ] && continue
+		[ -d "$d" ] || continue
+		name=$(basename "$d")
+		case $name in
+		'' | . | .. | *[!A-Za-z0-9.-]*) continue ;;
+		esac
+		if [ -e "$d/fullchain.pem" ] || [ -e "$d/privkey.pem" ]; then
+			rm -f "$d/fullchain.pem" "$d/privkey.pem"
+			echo "bootstash: removed PEMs in $d (TLS=no; unused private key)" >&2
+		fi
+		rmdir "$d" 2>/dev/null || true
+	done
 }
 
 origin_host() {
@@ -78,7 +110,8 @@ first_bind() {
 }
 
 # Same as config.derivePublicURL: CERT_NAME host, first TCP BIND
-# (else default-dist / 8080), https if the dest pair exists, omit
+# (else default-dist / 8080), https if the dest pair exists (unless
+# TLS=no), omit
 # 80 and 443.
 derived_public_url() {
 	host=$1
@@ -101,8 +134,10 @@ derived_public_url() {
 	'' | *[!0-9]*) return 0 ;;
 	esac
 	scheme=http
-	if [ -f "$certs/$host/fullchain.pem" ] && [ -f "$certs/$host/privkey.pem" ]; then
-		scheme=https
+	if ! tls_off; then
+		if [ -f "$certs/$host/fullchain.pem" ] && [ -f "$certs/$host/privkey.pem" ]; then
+			scheme=https
+		fi
 	fi
 	if { [ "$scheme" = http ] && [ "$port" = 80 ]; } || { [ "$scheme" = https ] && [ "$port" = 443 ]; }; then
 		printf '%s://%s' "$scheme" "$host"
@@ -291,6 +326,14 @@ sync_live() {
 		echo "bootstash: no lineages in $live" >&2
 	fi
 }
+
+if tls_off; then
+	echo "bootstash: TLS=no; not copying live/ into $certs" >&2
+	purge_dest_certs
+	persist_cert_name
+	maybe_reload
+	exit 0
+fi
 
 if [ "${1:-}" = sync ]; then
 	sync_live

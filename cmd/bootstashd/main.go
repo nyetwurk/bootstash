@@ -66,7 +66,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if cfg.TLSCert != "" {
+	if cfg.UseTLS() {
 		if err := srv.LoadCertificate(cfg.TLSCert, cfg.TLSKey); err != nil {
 			log.Fatal(err)
 		}
@@ -138,7 +138,7 @@ func reload(srv *web.Server, defaultsPath, configPath, secretsPath string) {
 		log.Printf("reload: keeping last good config: %v", err)
 		return
 	}
-	if cfg.TLSCert != "" {
+	if cfg.UseTLS() {
 		if err := srv.LoadCertificate(cfg.TLSCert, cfg.TLSKey); err != nil {
 			log.Printf("reload: keeping previous certificate: %v", err)
 		}

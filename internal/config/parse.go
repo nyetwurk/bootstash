@@ -103,13 +103,29 @@ func parseAdminUsers(s string) ([]string, error) {
 	return out, nil
 }
 
-func parseBool(s string) bool {
+func parseBool(s string) (bool, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "1", "true", "yes", "on":
-		return true
+		return true, nil
+	case "0", "false", "no", "off":
+		return false, nil
 	default:
-		return false
+		return false, fmt.Errorf("want 0/1, false/true, no/yes, or off/on")
 	}
+}
+
+// parseTLS: auto/maybe means use PEMs if present. yes/no and the
+// other bool pairs are the same as parseBool (yes = auto).
+func parseTLS(s string) (disable bool, err error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "auto", "maybe":
+		return false, nil
+	}
+	on, err := parseBool(s)
+	if err != nil {
+		return false, fmt.Errorf("want auto, maybe, yes/no, true/false, on/off, or 0/1")
+	}
+	return !on, nil
 }
 
 var sizeSuffix = []struct {

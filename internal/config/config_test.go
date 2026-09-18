@@ -138,6 +138,39 @@ func TestDefaultTLSFromCertDir(t *testing.T) {
 	if cfg.PublicURL != "https://box.example:8080" {
 		t.Fatalf("origin %q", cfg.PublicURL)
 	}
+	if !cfg.UseTLS() {
+		t.Fatal("expected UseTLS")
+	}
+
+	off := filepath.Join(dir, "tls-off")
+	if err := os.WriteFile(off, []byte("TLS=0\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(def, off, filepath.Join(dir, "nosecrets"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.DisableTLS || cfg.UseTLS() {
+		t.Fatalf("tls off %+v", cfg)
+	}
+	if cfg.TLSCert == "" {
+		t.Fatal("certs still discovered")
+	}
+	if cfg.PublicURL != "http://box.example:8080" {
+		t.Fatalf("derived url %q", cfg.PublicURL)
+	}
+
+	keep := filepath.Join(dir, "tls-off-url")
+	if err := os.WriteFile(keep, []byte("TLS=0\nPUBLIC_URL=https://stash.test\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(def, keep, filepath.Join(dir, "nosecrets"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UseTLS() || cfg.PublicURL != "https://stash.test" {
+		t.Fatalf("explicit https url with tls off %+v", cfg)
+	}
 
 	explicit := filepath.Join(dir, "explicit")
 	if err := os.WriteFile(explicit, []byte("TLS_CERT=/c\nTLS_KEY=/k\n"), 0600); err != nil {
@@ -333,5 +366,84 @@ func TestLoadSecretsKEYValueFallback(t *testing.T) {
 	}
 	if cfg.GoogleClientID != "legacy" {
 		t.Fatalf("id %q", cfg.GoogleClientID)
+	}
+}
+
+func TestParseBoolPairs(t *testing.T) {
+	for _, s := range []string{"1", "true", "yes", "on", "TRUE", "Yes"} {
+		v, err := parseBool(s)
+		if err != nil || !v {
+			t.Fatalf("%q -> %v %v", s, v, err)
+		}
+	}
+	for _, s := range []string{"0", "false", "no", "off", "FALSE", "No"} {
+		v, err := parseBool(s)
+		if err != nil || v {
+			t.Fatalf("%q -> %v %v", s, v, err)
+		}
+	}
+	if _, err := parseBool("maybe"); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestTLSFalseSynonym(t *testing.T) {
+	dir := t.TempDir()
+	def := filepath.Join(dir, "default-dist")
+	op := filepath.Join(dir, "config")
+	if err := os.WriteFile(def, []byte("BIND=127.0.0.1:8080\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(op, []byte("TLS=false\nPUBLIC_URL=http://box.example:8080\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(def, op, filepath.Join(dir, "nosecrets"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.DisableTLS || cfg.UseTLS() {
+		t.Fatalf("%+v", cfg)
+	}
+	if err := os.WriteFile(op, []byte("TLS=maybe\nPUBLIC_URL=http://box.example:8080\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(def, op, filepath.Join(dir, "nosecrets"))
+	if err != nil || cfg.DisableTLS {
+		t.Fatalf("maybe: %+v %v", cfg, err)
+	}
+	if err := os.WriteFile(op, []byte("TLS=sometimes\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(def, op, filepath.Join(dir, "nosecrets")); err == nil {
+		t.Fatal("expected TLS=sometimes to fail")
+	}
+}
+
+func TestBuiltinDefaultDist(t *testing.T) {
+	prevFQDN := lookupFQDN
+	prevRoot := certRoot
+	t.Cleanup(func() {
+		lookupFQDN = prevFQDN
+		certRoot = prevRoot
+	})
+	lookupFQDN = func() (string, error) { return "localhost", nil }
+	certRoot = t.TempDir()
+
+	dir := t.TempDir()
+	cfg, err := Load(filepath.Join(dir, "missing-dist"), filepath.Join(dir, "missing-op"), filepath.Join(dir, "nosecrets"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Data != "/var/lib/bootstash" || cfg.PAMService != "bootstashd" || cfg.UnixGroup != "bootstash" {
+		t.Fatalf("paths %+v", cfg)
+	}
+	if cfg.MaxUpload != 32<<20 || cfg.SharedWritable || cfg.DisableTLS {
+		t.Fatalf("scalars %+v", cfg)
+	}
+	if len(cfg.Binds) != 1 || cfg.Binds[0] != "127.0.0.1:8080" {
+		t.Fatalf("binds %#v", cfg.Binds)
+	}
+	if cfg.PublicURL != "" || cfg.CertName != "" || cfg.TLSCert != "" || cfg.GoogleClientID != "" {
+		t.Fatalf("empty %+v", cfg)
 	}
 }

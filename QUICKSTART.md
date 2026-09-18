@@ -7,7 +7,7 @@ expectations: [`README.md`](README.md). Keys and files:
 `/etc/default/bootstash` ships with commented `DATA`, `BIND`,
 `PUBLIC_URL`, and `ADMIN_USERS`. Add other overrides; packaged
 values stay in
-`/usr/lib/bootstash/default-dist`.
+`/usr/lib/bootstash/default-dist` (every key).
 If configure detects a single `live/`
 lineage (or `live/$(hostname -f)`), it inserts commented
 `# CERT_NAME=` and `# PUBLIC_URL=` hints after the file header
@@ -16,12 +16,13 @@ at runtime unless you uncomment them. If you delete the conffile, `dpkg -i` will
 configure restores the packaged pointer from
 `/usr/lib/bootstash/default`, or use `dpkg --force-confmiss -i`.
 Configure does not enable the unit. If the daemon is already
-running it `try-restart`s after the cert copy; if it is down it
+running it `try-restart`s after cert sync (copy, or dest PEM
+removal when `TLS=no`); if it is down it
 starts only when `bootstash check-config` would pass (same as
 `bootstashd -t`). First install without a Google client id stays
 down. Configure prints what is still needed (daemon not started or
 not enabled on boot, no Google client id, loopback BIND, no copied
-certs).
+certs unless `TLS=no`).
 
 ## Listen and origin
 
@@ -31,9 +32,11 @@ reach you (interface, CIDR, address, `*`, or `unix://`).
 `PUBLIC_URL` is the URL the **phone’s browser** uses for the OIDC
 callback (Google never connects to you). When unset it is
 `CERT_NAME` (see TLS) plus the first listen port, else
-`hostname -f`. `https` if cert and key are present. That name must
-resolve and reach this daemon. If you bind only a tunnel NIC but
-the origin is a public `:443` vhost, the callback misses.
+`hostname -f`. Packaged `TLS=auto`: `https` if cert and key are
+present. `TLS=no` forces HTTP.
+That name must resolve and reach this daemon. If you bind only a
+tunnel NIC but the origin is a public `:443` vhost, the callback
+misses.
 
 ## TLS and Let’s Encrypt
 
@@ -47,16 +50,25 @@ Not an ACME client. Default files, when both exist:
 guess when there are several). After the copy, the daemon uses that
 directory as `CERT_NAME` and defaults `PUBLIC_URL` from it. Do
 **not** point `TLS_CERT` / `TLS_KEY` at `/etc/letsencrypt/live`.
+Packaged `TLS=auto` uses those PEMs when both exist. `TLS=no` keeps
+TCP binds on HTTP. The deploy hook then does **not** copy
+`live/` into `/etc/bootstash/certs` and removes dest PEMs there so
+`User=bootstash` does not hold an unused private key. `live/` is
+untouched. A reverse proxy can terminate TLS; write `PUBLIC_URL` as
+the browser URL. After setting `TLS=no`, run
+`letsencrypt-deploy sync` (or wait for the next renew) to drop dest
+keys already copied.
 
 The packaged hook is `/usr/lib/bootstash/letsencrypt-deploy` (also
 `/etc/letsencrypt/renewal-hooks/deploy/bootstash`). It copies **that
 one** lineage, not every cert on the box.
 
 - **Issue and renew:** certbot runs the hook for the chosen name.
-  Unrelated lineages are skipped. Do not run it on a timer
+  Unrelated lineages are skipped. `TLS=no` skips the copy and
+  removes dest PEMs. Do not run it on a timer
 - **Install and upgrade:** `letsencrypt-deploy sync`. One lineage on
   the box is enough; several lineages and no `CERT_NAME` **prints**
-  the list
+  the list. `TLS=no` removes dest PEMs instead of copying
 - **Force a name:** `CERT_NAME=stash.example` in
   `/etc/default/bootstash`, then
   `sudo /usr/lib/bootstash/letsencrypt-deploy sync`
@@ -89,8 +101,9 @@ sudo systemctl enable --now bootstash
 (`gcloud` has no API for that type) and does not edit
 `/etc/default/bootstash`. It prints recommended values for the
 project, branding screen, and Web application client, plus the
-redirect URI from the loaded config (`https` if PEMs exist; BIND
-port stays). After you download the client JSON from the console,
+redirect URI from the loaded config (`https` if the daemon would
+speak HTTPS: PEMs present and not `TLS=no`; BIND port stays). After
+you download the client JSON from the console,
 it copies that file to `/etc/bootstash/oidc-google.json` (`-json` or a
 prompted path).
 
@@ -105,8 +118,8 @@ do not add yourself to that group. Other logins cannot list `users/`
 or enter someone else’s cubby.
 
 Interface binds retry if the NIC is late. `systemctl reload` is
-SIGHUP (certs, operator file, secrets, CIDR/interface binds). Logs
-go to the journal.
+SIGHUP (operator file, secrets, CIDR/interface binds, cubby modes;
+certs when TLS is on). Logs go to the journal.
 
 ## See also
 

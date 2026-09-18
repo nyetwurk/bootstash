@@ -75,7 +75,8 @@ cargo install git-cliff
 ## Package install
 
 `debian/` is the install path. Configure does not enable the unit.
-If the daemon is already running it `try-restart`s after cert sync;
+If the daemon is already running it `try-restart`s after cert sync
+(copy, or dest PEM removal when `TLS=no`);
 if it is down it starts only when `bootstash check-config` would
 pass (same as `bootstashd -t`; first install without OIDC stays
 down). Purge must not delete

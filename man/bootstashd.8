@@ -16,6 +16,17 @@ is the bootstash daemon. After Google OpenID Connect and a one-time PAM
 link to an existing Unix account, it serves a shared tree (read) and the
 linked user’s tree (read/write) over HTTP or HTTPS.
 .PP
+Packaged
+.B TLS=auto
+uses HTTPS when a cert pair exists.
+.B TLS=no
+keeps TCP binds on HTTP; the Let’s Encrypt hook then does not copy
+.I live/
+and removes dest PEMs under
+.IR /etc/bootstash/certs
+(see
+.BR bootstash (5)).
+.PP
 HTTP
 .B DELETE
 removes a file or empty directory in a writable tree (not rename).
@@ -53,7 +64,9 @@ and exit.
 .TP
 .BR \-t ", " \-\-check\-config
 Parse dist defaults, operator config, secrets file, BIND specs, and
-TLS files (if set). Print a short summary and exit. Does not listen.
+TLS files when HTTPS is on (skipped if
+.BR TLS=no ).
+Print a short summary and exit. Does not listen.
 .TP
 .BI \-defaults " path"
 Dist defaults file. Default:
@@ -76,8 +89,10 @@ Not an operator tool.
 .B SIGHUP
 Re-read dist defaults, operator config, and the secrets file
 (keep the last good config on parse failure),
-reload TLS certificate and key from disk (keep the previous cert on
-failure), reapply cubby
+reload TLS certificate and key from disk when HTTPS is on (keep the
+previous cert on failure;
+.B TLS=no
+does not load PEMs and recreates TCP listeners as HTTP), reapply cubby
 .B 2770
 and file
 .BR 0640 ,

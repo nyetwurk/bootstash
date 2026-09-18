@@ -160,7 +160,7 @@ func (c *Config) derivePublicURL() {
 		return
 	}
 	scheme := "http"
-	if c.TLSCert != "" && c.TLSKey != "" {
+	if c.UseTLS() {
 		scheme = "https"
 	}
 	h := originHost(host)

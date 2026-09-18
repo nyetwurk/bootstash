@@ -32,7 +32,9 @@ Parse dist defaults
 .IR /etc/bootstash/oidc-google.json ,
 every
 .B BIND
-spec, and TLS files when set. Exit 0 if the daemon could start (missing
+spec, and TLS files when HTTPS is on (skipped if
+.BR TLS=no ).
+Exit 0 if the daemon could start (missing
 interfaces are not an error here). Same as
 .B bootstashd \-t .
 .TP

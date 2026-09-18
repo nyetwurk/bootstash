@@ -13,11 +13,7 @@ import (
 func Chown(path string, uid, gid int) error {
 	st, err := os.Lstat(path)
 	if err != nil {
-		if err := os.Chown(path, uid, gid); err != nil {
-			return err
-		}
-		log.Printf("chown %s -> %d:%d", path, uid, gid)
-		return nil
+		return err
 	}
 	ou, og, ok := FileIDs(st)
 	nu, ng := ou, og

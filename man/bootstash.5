@@ -9,7 +9,8 @@ bootstash \- operator config, dist defaults, and OIDC secrets
 .I /etc/bootstash/oidc-google.json
 .SH DESCRIPTION
 bootstashd reads dist defaults
-.RI ( /usr/lib/bootstash/default-dist ),
+.RI ( /usr/lib/bootstash/default-dist ;
+every key, including empty/derived),
 then
 .IR /etc/default/bootstash ,
 then
@@ -46,7 +47,9 @@ configure copies
 back if the path is missing. It does not enable the unit.
 If the daemon is already running it
 .BR try-restart s
-after the cert copy; if it is down it starts only when
+after cert sync (copy, or dest PEM removal when
+.BR TLS=no );
+if it is down it starts only when
 .B bootstash check-config
 would pass (same as
 .BR bootstashd \-t ).
@@ -54,7 +57,8 @@ First install without a Google client id stays down.
 It prints remaining steps (daemon not started or not enabled on
 boot, no Google client id, loopback
 .BR BIND ,
-no copied certs).
+no copied certs unless
+.BR TLS=no ).
 .PP
 .I /etc/bootstash/oidc-google.json
 is the Google Web application client JSON
@@ -88,7 +92,11 @@ if none) and the first TCP
 .B BIND
 port, with scheme
 .B https
-when cert files are present.
+when cert files are present
+.RB ( TLS=auto ).
+.B TLS=no
+forces
+.BR http .
 Ports 80 and 443 are omitted.
 .B localhost
 is not used.
@@ -115,8 +123,48 @@ If no address matches at start, the daemon refuses to run; on reload
 it keeps the previous listeners.
 A missing interface is retried at start and kept on reload.
 .TP
+.B TLS
+Default
+.B auto
+(also
+.BR maybe ):
+HTTPS when a cert pair is found, otherwise HTTP.
+.B yes
+.RB / true / on / 1
+are the same as
+.BR auto .
+.B no
+forces HTTP on TCP binds.
+The Let’s Encrypt hook does not copy
+.I live/
+into
+.I /etc/bootstash/certs
+and removes dest PEMs there so
+.B bootstash
+does not hold an unused private key.
+.I live/
+is untouched.
+.B TLS_CERT
+/
+.B TLS_KEY
+are also ignored.
+.BR false / 0 / off
+are the same as
+.BR no .
+Other values are an error.
+An explicit
+.B PUBLIC_URL
+keeps its scheme (a proxy may terminate TLS).
+Derived
+.B PUBLIC_URL
+is
+.B http
+when
+.BR TLS=no .
+.TP
 .B TLS_CERT / TLS_KEY
-If both are set, TCP binds use HTTPS with these files.
+If both are set, TCP binds use HTTPS with these files unless
+.BR TLS=no .
 When unset, the daemon uses
 .I /etc/bootstash/certs/<name>/fullchain.pem
 and
@@ -142,7 +190,10 @@ or the only
 .I live/
 lineage; the daemon then sees that
 .I certs/<name>/
-pair. Several lineages and no
+pair.
+.B TLS=no
+skips that copy and removes dest PEMs.
+Several lineages and no
 .B CERT_NAME
 :
 .B sync
@@ -222,10 +273,16 @@ are accepted). Default 32MiB.
 .TP
 .B SHARED_WRITABLE
 If
-.BR 1 ,
+.BR yes ,
 allow HTTP writes into
 .IR shared/ .
-Default off.
+Default
+.BR no .
+.BR true / false ,
+.BR 1 / 0 ,
+and
+.BR on / off
+are accepted. Other values are an error.
 .TP
 .B UNIX_GROUP
 Group for Unix sockets. Default
@@ -260,7 +317,10 @@ Filled by
 Certbot runs that hook on issue and renew for the
 chosen lineage. The package runs
 .B letsencrypt-deploy sync
-on configure (prints if nothing matches). See
+on configure (prints if nothing matches).
+.B TLS=no
+skips the copy and removes dest PEMs.
+See
 .IR /usr/share/doc/bootstash/QUICKSTART.md .
 .SH SEE ALSO
 .BR bootstashd (8),

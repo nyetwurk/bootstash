@@ -37,9 +37,11 @@ must not yield plaintext,” this is the wrong program.
 
 Debian hosts that already have **PAM accounts**. Typical session: reach
 the daemon → Google sign-in → (once) Linux username + password →
-download bootstrap files. TLS is either on a reverse proxy or Let’s
-Encrypt files on disk (copied into `/etc/bootstash/certs/`; see
-[`QUICKSTART.md`](QUICKSTART.md)). Install is a **public `.deb`**.
+download bootstrap files. Packaged `TLS=auto` uses Let’s Encrypt
+files on disk (copied into `/etc/bootstash/certs/`) when both PEMs
+exist. `TLS=no` is cleartext (no dest copy; dest PEMs removed; a
+reverse proxy may terminate HTTPS). See
+[`QUICKSTART.md`](QUICKSTART.md). Install is a **public `.deb`**.
 
 ## What you can do
 

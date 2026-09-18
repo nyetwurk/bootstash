@@ -28,7 +28,7 @@ func Check(defaultsPath, configPath, secretsPath string) (*config.Config, error)
 			return cfg, fmt.Errorf("BIND %q: %w", raw, err)
 		}
 	}
-	if cfg.TLSCert != "" {
+	if cfg.UseTLS() {
 		if _, err := tls.LoadX509KeyPair(cfg.TLSCert, cfg.TLSKey); err != nil {
 			return cfg, fmt.Errorf("TLS_CERT/TLS_KEY: %w", err)
 		}
@@ -39,6 +39,9 @@ func Check(defaultsPath, configPath, secretsPath string) (*config.Config, error)
 // Summary is the check-config / startup line (no secrets).
 func Summary(cfg *config.Config) string {
 	s := fmt.Sprintf("url=%s binds=%s", cfg.PublicURL, strings.Join(cfg.Binds, ","))
+	if cfg.DisableTLS {
+		s += " tls=no"
+	}
 	if len(cfg.AdminUsers) > 0 {
 		s += " admins=" + strings.Join(cfg.AdminUsers, ",")
 	}

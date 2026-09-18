@@ -34,6 +34,10 @@ func TestSummaryIncludesAdmins(t *testing.T) {
 	if !strings.Contains(got, "admins=alice") {
 		t.Fatalf("%s", got)
 	}
+	off := &config.Config{PublicURL: "http://stash.test", Binds: []string{"127.0.0.1:8080"}, DisableTLS: true}
+	if got := Summary(off); !strings.Contains(got, "tls=no") {
+		t.Fatalf("%s", got)
+	}
 }
 
 func TestCheckBadBind(t *testing.T) {
@@ -57,5 +61,21 @@ func TestCheckMissingOrigin(t *testing.T) {
 	}
 	if _, err := Check("", ov, filepath.Join(dir, "nosecrets")); err == nil {
 		t.Fatal("expected missing PUBLIC_URL")
+	}
+}
+
+func TestCheckTLSOffSkipsBadPair(t *testing.T) {
+	dir := t.TempDir()
+	ov := filepath.Join(dir, "config")
+	body := "PUBLIC_URL=http://stash.test\nOIDC_GOOGLE_CLIENT_ID=cid\nBIND=127.0.0.1:8080\nTLS=0\nTLS_CERT=/no/cert\nTLS_KEY=/no/key\n"
+	if err := os.WriteFile(ov, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Check("", ov, filepath.Join(dir, "nosecrets"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UseTLS() {
+		t.Fatal("expected tls off")
 	}
 }

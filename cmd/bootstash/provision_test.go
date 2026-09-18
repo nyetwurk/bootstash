@@ -60,6 +60,23 @@ func TestPrintGoogleSetupHTTPWhenNoCerts(t *testing.T) {
 	}
 }
 
+func TestPrintGoogleSetupHTTPWhenTLSOff(t *testing.T) {
+	var buf bytes.Buffer
+	printGoogleSetup(&buf, googleSetup{
+		Pub:      "https://stash.example",
+		Redirect: "https://stash.example/oidc/callback",
+		TLSOff:   true,
+		Binds:    []string{"127.0.0.1:8080"},
+	})
+	got := buf.String()
+	if !strings.Contains(got, "HTTP: TLS=no") || !strings.Contains(got, "not copy live/") {
+		t.Fatalf("%s", got)
+	}
+	if strings.Contains(got, "HTTPS: PEMs found") {
+		t.Fatalf("tls on:\n%s", got)
+	}
+}
+
 func TestInstallGoogleClientJSONCopiesDownload(t *testing.T) {
 	dir := t.TempDir()
 	op := filepath.Join(dir, "config")

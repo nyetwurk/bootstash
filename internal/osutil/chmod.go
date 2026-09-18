@@ -12,11 +12,7 @@ import (
 func Chmod(path string, mode os.FileMode) error {
 	st, err := os.Lstat(path)
 	if err != nil {
-		if err := os.Chmod(path, mode); err != nil {
-			return err
-		}
-		log.Printf("chmod %s -> %04o", path, UnixBits(mode))
-		return nil
+		return err
 	}
 	from := UnixBits(st.Mode())
 	to := UnixBits(mode)

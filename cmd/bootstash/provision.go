@@ -52,7 +52,8 @@ func runProvision(args []string) int {
 		Pub:       pub,
 		Redirect:  redirect,
 		Proj:      proj,
-		TLS:       cfg.TLSCert != "" && cfg.TLSKey != "",
+		TLS:       cfg.UseTLS(),
+		TLSOff:    cfg.DisableTLS,
 		CertName:  cfg.CertName,
 		Binds:     cfg.Binds,
 		OriginSet: *origin != "",
@@ -85,6 +86,7 @@ type googleSetup struct {
 	Redirect  string
 	Proj      string
 	TLS       bool
+	TLSOff    bool
 	CertName  string
 	Binds     []string
 	OriginSet bool
@@ -133,6 +135,11 @@ func printGoogleSetup(w io.Writer, s googleSetup) {
 			fmt.Fprintln(w, "   CERT_NAME="+s.CertName)
 		}
 		fmt.Fprintln(w, "   Phone on default HTTPS: set BIND (e.g. *:443) and run this again.")
+	} else if s.TLSOff {
+		fmt.Fprintln(w, "   HTTP: TLS=no. TCP binds stay cleartext. The deploy hook does")
+		fmt.Fprintln(w, "   not copy live/ into /etc/bootstash/certs and removes dest PEMs")
+		fmt.Fprintln(w, "   there (User=bootstash should not hold an unused private key).")
+		fmt.Fprintln(w, "   An explicit PUBLIC_URL keeps its scheme (proxy terminates TLS).")
 	} else {
 		fmt.Fprintln(w, "   HTTP: no PEMs in /etc/bootstash/certs. Do not invent https://.")
 		fmt.Fprintln(w, "   To use HTTPS: CERT_NAME=<lineage> in /etc/default/bootstash, then")

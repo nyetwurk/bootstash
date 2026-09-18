@@ -28,6 +28,7 @@ type Manager struct {
 type managed struct {
 	id      string
 	specRaw string
+	https   bool
 	ln      net.Listener
 	srv     *http.Server
 }
@@ -104,11 +105,18 @@ func (m *Manager) Sync(specs []Spec, useTLS, reload bool) error {
 
 	var listenErr error
 	for id, t := range wanted {
-		if _, ok := m.current[id]; ok {
-			m.current[id].specRaw = specOf[id]
-			continue
-		}
 		https := useTLS && !t.Unix
+		if mg, ok := m.current[id]; ok {
+			if mg.https == https {
+				mg.specRaw = specOf[id]
+				continue
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = mg.srv.Shutdown(ctx)
+			cancel()
+			mg.ln.Close()
+			delete(m.current, id)
+		}
 		if err := m.listenAndServe(id, specOf[id], t, https); err != nil && t.Device != "" {
 			fallback, ferr := EnumerateIface(t.Device, portOf(t), familyOf(t))
 			if ferr != nil {
@@ -177,7 +185,7 @@ func (m *Manager) serve(id, specRaw string, t Target, ln net.Listener, https boo
 		}
 		ln = tls.NewListener(ln, srv.TLSConfig)
 	}
-	m.current[id] = &managed{id: id, specRaw: specRaw, ln: ln, srv: srv}
+	m.current[id] = &managed{id: id, specRaw: specRaw, https: https, ln: ln, srv: srv}
 	go func() {
 		err := srv.Serve(ln)
 		if err != nil && err != http.ErrServerClosed {

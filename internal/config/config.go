@@ -26,10 +26,12 @@ const (
 
 // Config is the merged runtime configuration.
 type Config struct {
-	PublicURL          string
-	Binds              []string
-	TLSCert            string
-	TLSKey             string
+	PublicURL string
+	Binds     []string
+	TLSCert   string
+	TLSKey    string
+	// DisableTLS is TLS=no: TCP binds stay HTTP even if PEMs exist.
+	DisableTLS         bool
 	CertName           string
 	Data               string
 	GoogleClientID     string
@@ -114,7 +116,7 @@ func (c *Config) Ready() error {
 	if strings.TrimSpace(c.GoogleClientID) == "" {
 		return fmt.Errorf("OIDC_GOOGLE_CLIENT_ID is not set (install the Google client JSON in %s or run bootstash provision-google)", c.SecretsPath)
 	}
-	if (c.TLSCert == "") != (c.TLSKey == "") {
+	if !c.DisableTLS && (c.TLSCert == "") != (c.TLSKey == "") {
 		return fmt.Errorf("TLS_CERT and TLS_KEY must be set together")
 	}
 	if len(c.Binds) == 0 {
@@ -128,11 +130,11 @@ func (c *Config) apply(m map[string][]string) error {
 	c.Binds = append([]string(nil), m["BIND"]...)
 	c.TLSCert = first(m, "TLS_CERT")
 	c.TLSKey = first(m, "TLS_KEY")
-	c.Data = orDefault(first(m, "DATA"), "/var/lib/bootstash")
+	c.Data = first(m, "DATA")
 	c.GoogleClientID = first(m, "OIDC_GOOGLE_CLIENT_ID")
 	c.GoogleClientSecret = first(m, "OIDC_GOOGLE_CLIENT_SECRET")
-	c.PAMService = orDefault(first(m, "PAM_SERVICE"), "bootstashd")
-	c.UnixGroup = orDefault(first(m, "UNIX_GROUP"), "bootstash")
+	c.PAMService = first(m, "PAM_SERVICE")
+	c.UnixGroup = first(m, "UNIX_GROUP")
 
 	if s := first(m, "CERT_NAME"); s != "" {
 		if badName(s) || !usableOriginHost(s) {
@@ -140,18 +142,29 @@ func (c *Config) apply(m map[string][]string) error {
 		}
 		c.CertName = s
 	}
+	if s := first(m, "TLS"); s != "" {
+		off, err := parseTLS(s)
+		if err != nil {
+			return fmt.Errorf("TLS: %w", err)
+		}
+		c.DisableTLS = off
+	}
 	if s := first(m, "SHARED_WRITABLE"); s != "" {
-		c.SharedWritable = parseBool(s)
+		on, err := parseBool(s)
+		if err != nil {
+			return fmt.Errorf("SHARED_WRITABLE: %w", err)
+		}
+		c.SharedWritable = on
 	}
 	if s := first(m, "MAX_UPLOAD"); s != "" {
 		n, err := parseSize(s)
 		if err != nil {
 			return fmt.Errorf("MAX_UPLOAD: %w", err)
 		}
+		if n <= 0 {
+			return fmt.Errorf("MAX_UPLOAD: must be > 0")
+		}
 		c.MaxUpload = n
-	}
-	if c.MaxUpload == 0 {
-		c.MaxUpload = 32 << 20
 	}
 	if s := first(m, "OIDC_CRYPTO"); s != "" {
 		key, err := parseCrypto(s)
@@ -167,7 +180,28 @@ func (c *Config) apply(m map[string][]string) error {
 		}
 		c.AdminUsers = users
 	}
+	for _, p := range []struct {
+		ok   bool
+		name string
+	}{
+		{c.Data != "", "DATA"},
+		{c.PAMService != "", "PAM_SERVICE"},
+		{c.UnixGroup != "", "UNIX_GROUP"},
+		{c.MaxUpload > 0, "MAX_UPLOAD"},
+	} {
+		if !p.ok {
+			return fmt.Errorf("%s is not set", p.name)
+		}
+	}
 	return nil
+}
+
+// UseTLS is HTTPS on TCP binds. False when TLS=no, even if certs exist.
+func (c *Config) UseTLS() bool {
+	if c == nil || c.DisableTLS {
+		return false
+	}
+	return c.TLSCert != "" && c.TLSKey != ""
 }
 
 // IsAdmin reports whether pamUser is in ADMIN_USERS. Empty list: nobody.

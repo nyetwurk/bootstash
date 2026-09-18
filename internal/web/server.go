@@ -104,7 +104,7 @@ func (s *Server) SyncBinds(reload bool) error {
 		}
 		specs = append(specs, *sp)
 	}
-	return s.manager.Sync(specs, cfg.TLSCert != "", reload)
+	return s.manager.Sync(specs, cfg.UseTLS(), reload)
 }
 
 // Close shuts down listeners.

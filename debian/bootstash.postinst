@@ -79,9 +79,15 @@ print_next() {
 		echo "bootstash: BIND is still 127.0.0.1:8080. Set BIND in $op if a phone must reach you." >&2
 		need=1
 	fi
-	if [ ! -d /etc/bootstash/certs ] || ! find /etc/bootstash/certs -name fullchain.pem 2>/dev/null | grep -q .; then
-		echo "bootstash: no TLS files under /etc/bootstash/certs (HTTP unless you set TLS_CERT)." >&2
-		need=1
+	tls0=
+	if [ -r "$op" ] && grep -qiE '^[ 	]*TLS=[ 	]*["'"'"']?(0|false|no|off)["'"'"']?[[:space:]]*$' "$op"; then
+		tls0=1
+	fi
+	if [ -z "$tls0" ]; then
+		if [ ! -d /etc/bootstash/certs ] || ! find /etc/bootstash/certs -name fullchain.pem 2>/dev/null | grep -q .; then
+			echo "bootstash: no TLS files under /etc/bootstash/certs (HTTP unless you set TLS_CERT, or TLS=no)." >&2
+			need=1
+		fi
 	fi
 	if [ -n "$need" ]; then
 		echo "bootstash: see /usr/share/doc/bootstash/QUICKSTART.md" >&2
