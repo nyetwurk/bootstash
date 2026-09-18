@@ -5,6 +5,9 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"log"
+	"log/syslog"
 	"os"
 
 	"github.com/nyet/bootstash/internal/config"
@@ -13,6 +16,11 @@ import (
 )
 
 func main() {
+	log.SetPrefix("bootstashd: ")
+	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
+	if w, err := syslog.New(syslog.LOG_INFO|syslog.LOG_DAEMON, "bootstashd"); err == nil {
+		log.SetOutput(io.MultiWriter(os.Stderr, w))
+	}
 	if len(os.Args) < 2 {
 		usage()
 		os.Exit(2)

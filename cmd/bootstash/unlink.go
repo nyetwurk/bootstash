@@ -6,6 +6,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/nyet/bootstash/internal/config"
@@ -52,7 +53,11 @@ func runUnlink(args []string) int {
 	}
 	fmt.Printf("unlinked %s (%d subject(s), %d session(s))\n", user, len(removed), sessions)
 	for _, l := range removed {
+		log.Printf("unlink pam=%s sub=%s", user, l.Subject)
 		fmt.Printf("  %s %s\n", l.Issuer, l.Subject)
+	}
+	if len(removed) == 0 && sessions > 0 {
+		log.Printf("unlink pam=%s sessions=%d", user, sessions)
 	}
 	return 0
 }

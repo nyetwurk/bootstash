@@ -5,8 +5,11 @@ package store
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/nyet/bootstash/internal/osutil"
 )
 
 func TestSessionAndLink(t *testing.T) {
@@ -135,6 +138,38 @@ func TestBadPasswordDoesNotWriteLink(t *testing.T) {
 	_, ok, err := st.LookupLink("iss", "sub")
 	if err != nil || ok {
 		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+}
+
+func TestStateFilesMatchDirOwner(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetLink("https://accounts.google.com", "sub-1", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	dirSt, err := os.Stat(st.Dir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fileSt, err := os.Stat(filepath.Join(st.Dir(), "links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	du, dg, ok := osutil.FileIDs(dirSt)
+	if !ok {
+		t.Fatal("dir ids")
+	}
+	fu, fg, ok := osutil.FileIDs(fileSt)
+	if !ok {
+		t.Fatal("file ids")
+	}
+	if fu != du || fg != dg {
+		t.Fatalf("links.json %d:%d dir %d:%d", fu, fg, du, dg)
+	}
+	if got := fileSt.Mode().Perm(); got != 0600 {
+		t.Fatalf("links.json mode %04o", got)
 	}
 }
 

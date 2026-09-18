@@ -128,7 +128,9 @@ can traverse in):
   Do not `chown` to `bootstash`. Start/SIGHUP and each `/home`
   GET/HEAD also `chgrp` files on that path (and listing children)
   and set `0640`. Full-tree pass is start/SIGHUP only.
-- `state/` — sessions, OIDC→PAM map, crypto key. `0700`, never HTTP
+- `state/` — sessions, OIDC→PAM map, crypto key. `0700`, never HTTP.
+  Writes (including `sudo bootstash unlink`) chown files to the
+  state directory owner so `User=bootstash` can still read them.
 
 Every file `open`/`create`/`unlink` is `openat` from the jail root.
 Reject `..`, NUL, and outbound symlinks. DELETE of a non-empty

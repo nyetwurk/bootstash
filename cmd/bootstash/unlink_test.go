@@ -4,8 +4,11 @@
 package main
 
 import (
+	"bytes"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,8 +40,20 @@ func TestRunUnlinkDropsPAMMap(t *testing.T) {
 	}
 
 	args := []string{"-defaults", filepath.Join(dir, "missing-dist"), "-config", op, "-secrets", filepath.Join(dir, "missing-secrets")}
+	var logs bytes.Buffer
+	log.SetOutput(&logs)
+	log.SetPrefix("bootstashd: ")
+	log.SetFlags(log.Lmsgprefix)
+	t.Cleanup(func() {
+		log.SetOutput(os.Stderr)
+		log.SetPrefix("")
+		log.SetFlags(log.LstdFlags)
+	})
 	if code := runUnlink(append(args, "alice")); code != 0 {
 		t.Fatalf("unlink alice: %d", code)
+	}
+	if !strings.Contains(logs.String(), "unlink pam=alice sub=sub-1") {
+		t.Fatalf("missing unlink log: %q", logs.String())
 	}
 	if _, ok, err := st.LookupLink(iss, "sub-1"); err != nil || ok {
 		t.Fatalf("link remains ok=%v err=%v", ok, err)

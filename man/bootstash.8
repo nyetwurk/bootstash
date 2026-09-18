@@ -150,6 +150,9 @@ does not grant this; write access to
 does (usually
 .BR sudo ).
 Does not call PAM and does not create or delete Unix users.
+State files stay owned as
+.I $DATA/state
+(not root) so the daemon can still read them.
 .TP
 .B version
 Print the version from

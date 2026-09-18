@@ -55,7 +55,9 @@ func Open(dataDir string) (*Store, error) {
 	if err := osutil.Chmod(dir, 0700); err != nil {
 		return nil, err
 	}
-	return &Store{dir: dir}, nil
+	s := &Store{dir: dir}
+	s.reclaimState()
+	return s, nil
 }
 
 // Dir returns the state directory.
@@ -74,7 +76,7 @@ func (s *Store) EnsureCryptoKey(existing []byte) ([]byte, error) {
 	if _, err := rand.Read(b); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(path, b, 0600); err != nil {
+	if err := s.writeStateFile(path, b); err != nil {
 		return nil, err
 	}
 	return b, nil
@@ -155,7 +157,7 @@ func (s *Store) saveSession(sess *Session) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0600)
+	return s.writeStateFile(path, b)
 }
 
 func (s *Store) sessionPath(id string) (string, bool) {
@@ -353,11 +355,63 @@ func (s *Store) writeLinks(lf *linkFile) error {
 	if err != nil {
 		return err
 	}
-	tmp := s.linksPath() + ".tmp"
+	return s.writeStateFile(s.linksPath(), b)
+}
+
+func (s *Store) writeStateFile(path string, b []byte) error {
+	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, b, 0600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, s.linksPath())
+	if err := osutil.Chmod(tmp, 0600); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := s.chownToState(tmp); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+// reclaimState chowns state files to match the state directory. sudo
+// bootstash unlink would otherwise leave links.json as root:root so
+// User=bootstash cannot read it.
+func (s *Store) reclaimState() {
+	st, err := os.Stat(s.dir)
+	if err != nil {
+		return
+	}
+	uid, gid, ok := osutil.FileIDs(st)
+	if !ok {
+		return
+	}
+	ents, err := os.ReadDir(s.dir)
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		if e.IsDir() {
+			continue
+		}
+		_ = osutil.Chown(filepath.Join(s.dir, e.Name()), uid, gid)
+	}
+}
+
+func (s *Store) chownToState(path string) error {
+	st, err := os.Stat(s.dir)
+	if err != nil {
+		return err
+	}
+	uid, gid, ok := osutil.FileIDs(st)
+	if !ok {
+		return nil
+	}
+	return osutil.Chown(path, uid, gid)
 }
 
 func (s *Store) linksPath() string {
