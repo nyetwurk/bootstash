@@ -17,7 +17,7 @@ func TestLoadOperatorConfigReplacesBIND(t *testing.T) {
 	if err := os.WriteFile(def, []byte("BIND=127.0.0.1:8080\nDATA=/tmp/data\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(op, []byte("BIND=tun0:8443\nBIND=lo:8080\nPUBLIC_ORIGIN=https://stash.test\nOIDC_GOOGLE_CLIENT_ID=cid\n"), 0600); err != nil {
+	if err := os.WriteFile(op, []byte("BIND=tun0:8443\nBIND=lo:8080\nPUBLIC_URL=https://stash.test\nOIDC_GOOGLE_CLIENT_ID=cid\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load(def, op, filepath.Join(dir, "nosecrets"))
@@ -50,7 +50,7 @@ func TestLoadMissingConfigKeepsDefaultBIND(t *testing.T) {
 	}
 }
 
-func TestDefaultPublicOriginFromHostname(t *testing.T) {
+func TestDefaultPublicURLFromHostname(t *testing.T) {
 	prev := lookupFQDN
 	t.Cleanup(func() { lookupFQDN = prev })
 	lookupFQDN = func() (string, error) { return "box.example", nil }
@@ -64,8 +64,8 @@ func TestDefaultPublicOriginFromHostname(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.PublicOrigin != "http://box.example:8080" {
-		t.Fatalf("origin %q", cfg.PublicOrigin)
+	if cfg.PublicURL != "http://box.example:8080" {
+		t.Fatalf("origin %q", cfg.PublicURL)
 	}
 
 	op := filepath.Join(dir, "tls")
@@ -76,20 +76,20 @@ func TestDefaultPublicOriginFromHostname(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.PublicOrigin != "https://box.example" {
-		t.Fatalf("tls origin %q", cfg.PublicOrigin)
+	if cfg.PublicURL != "https://box.example" {
+		t.Fatalf("tls origin %q", cfg.PublicURL)
 	}
 
 	explicit := filepath.Join(dir, "explicit")
-	if err := os.WriteFile(explicit, []byte("PUBLIC_ORIGIN=https://stash.test\n"), 0600); err != nil {
+	if err := os.WriteFile(explicit, []byte("PUBLIC_URL=https://stash.test\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err = Load(def, explicit, filepath.Join(dir, "nosecrets"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.PublicOrigin != "https://stash.test" {
-		t.Fatalf("explicit origin %q", cfg.PublicOrigin)
+	if cfg.PublicURL != "https://stash.test" {
+		t.Fatalf("explicit origin %q", cfg.PublicURL)
 	}
 
 	lookupFQDN = func() (string, error) { return "localhost", nil }
@@ -97,8 +97,8 @@ func TestDefaultPublicOriginFromHostname(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.PublicOrigin != "" {
-		t.Fatalf("localhost origin %q", cfg.PublicOrigin)
+	if cfg.PublicURL != "" {
+		t.Fatalf("localhost origin %q", cfg.PublicURL)
 	}
 }
 
@@ -135,8 +135,8 @@ func TestDefaultTLSFromCertDir(t *testing.T) {
 	if cfg.TLSCert != filepath.Join(hostDir, "fullchain.pem") || cfg.TLSKey != filepath.Join(hostDir, "privkey.pem") {
 		t.Fatalf("tls %q %q", cfg.TLSCert, cfg.TLSKey)
 	}
-	if cfg.PublicOrigin != "https://box.example:8080" {
-		t.Fatalf("origin %q", cfg.PublicOrigin)
+	if cfg.PublicURL != "https://box.example:8080" {
+		t.Fatalf("origin %q", cfg.PublicURL)
 	}
 
 	explicit := filepath.Join(dir, "explicit")
@@ -189,8 +189,8 @@ func TestDefaultTLSFromCertName(t *testing.T) {
 	if cfg.TLSCert != filepath.Join(hostDir, "fullchain.pem") {
 		t.Fatalf("tls %q", cfg.TLSCert)
 	}
-	if cfg.PublicOrigin != "https://box.example:8080" {
-		t.Fatalf("origin %q", cfg.PublicOrigin)
+	if cfg.PublicURL != "https://box.example:8080" {
+		t.Fatalf("origin %q", cfg.PublicURL)
 	}
 }
 
@@ -227,8 +227,8 @@ func TestDefaultOriginFromOnlyCertDir(t *testing.T) {
 	if cfg.CertName != "box.example" {
 		t.Fatalf("cert name %q", cfg.CertName)
 	}
-	if cfg.PublicOrigin != "https://box.example:8080" {
-		t.Fatalf("origin %q", cfg.PublicOrigin)
+	if cfg.PublicURL != "https://box.example:8080" {
+		t.Fatalf("origin %q", cfg.PublicURL)
 	}
 }
 
@@ -242,7 +242,7 @@ func TestParseSize(t *testing.T) {
 func TestCommentsAndQuotes(t *testing.T) {
 	dir := t.TempDir()
 	ov := filepath.Join(dir, "ov")
-	body := "# comment\nPUBLIC_ORIGIN=\"https://stash.test\"\nOIDC_GOOGLE_CLIENT_ID=abc\n"
+	body := "# comment\nPUBLIC_URL=\"https://stash.test\"\nOIDC_GOOGLE_CLIENT_ID=abc\n"
 	if err := os.WriteFile(ov, []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestCommentsAndQuotes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.PublicOrigin != "https://stash.test" || cfg.GoogleClientID != "abc" {
+	if cfg.PublicURL != "https://stash.test" || cfg.GoogleClientID != "abc" {
 		t.Fatalf("%+v", cfg)
 	}
 }
@@ -258,7 +258,7 @@ func TestCommentsAndQuotes(t *testing.T) {
 func TestAdminUsers(t *testing.T) {
 	dir := t.TempDir()
 	ov := filepath.Join(dir, "ov")
-	body := "PUBLIC_ORIGIN=https://stash.test\nOIDC_GOOGLE_CLIENT_ID=cid\nADMIN_USERS=alice, bob\n"
+	body := "PUBLIC_URL=https://stash.test\nOIDC_GOOGLE_CLIENT_ID=cid\nADMIN_USERS=alice, bob\n"
 	if err := os.WriteFile(ov, []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +286,7 @@ func TestLoadSecretsOverridesOIDCIgnoresBIND(t *testing.T) {
 	if err := os.WriteFile(def, []byte("BIND=127.0.0.1:8080\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(op, []byte("PUBLIC_ORIGIN=https://stash.test\nOIDC_GOOGLE_CLIENT_ID=old\nBIND=lo:8080\n"), 0600); err != nil {
+	if err := os.WriteFile(op, []byte("PUBLIC_URL=https://stash.test\nOIDC_GOOGLE_CLIENT_ID=old\nBIND=lo:8080\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(sec, []byte(`{"web":{"client_id":"new","client_secret":"sekrit"},"BIND":"evil:9"}`+"\n"), 0640); err != nil {

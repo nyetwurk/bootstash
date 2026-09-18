@@ -12,7 +12,7 @@ bootstash-provision-google \- write Google OIDC client keys into /etc/bootstash/
 Prints a four-step Google console recipe (project, branding,
 Web application client, download JSON) with a recommended value
 at each step, including the exact OIDC redirect URI
-.RB ( $PUBLIC_ORIGIN/oidc/callback )
+.RB ( $PUBLIC_URL/oidc/callback )
 from the loaded config. It says whether that URI is
 .B https
 (PEMs found; BIND port stays) or
@@ -48,7 +48,7 @@ create the Google OAuth web client.
 .B gcloud
 has no supported command for that client type. Consent / branding is
 once per GCP project. One web client per
-.B PUBLIC_ORIGIN
+.B PUBLIC_URL
 (operator file,
 .BR \-origin ,
 or the
@@ -64,7 +64,7 @@ It does not create Unix users.
 .TP
 .BI \-config " path"
 Operator config to read
-.B PUBLIC_ORIGIN
+.B PUBLIC_URL
 from. Default:
 .IR /etc/default/bootstash .
 .TP
@@ -73,7 +73,7 @@ File to write. Default:
 .IR /etc/bootstash/oidc-google.json .
 .TP
 .BI \-origin " url"
-.B PUBLIC_ORIGIN
+.B PUBLIC_URL
 if it is not already in
 .IR /etc/default/bootstash .
 .TP

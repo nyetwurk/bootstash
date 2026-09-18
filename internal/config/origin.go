@@ -139,7 +139,7 @@ func (c *Config) deriveTLSFiles() {
 	if strings.TrimSpace(c.TLSCert) != "" || strings.TrimSpace(c.TLSKey) != "" {
 		return
 	}
-	for _, h := range []string{c.CertName, originName(c.PublicOrigin), fqdn()} {
+	for _, h := range []string{c.CertName, originName(c.PublicURL), fqdn()} {
 		if cert, key, ok := certPair(h); ok {
 			c.TLSCert, c.TLSKey = cert, key
 			return
@@ -147,8 +147,8 @@ func (c *Config) deriveTLSFiles() {
 	}
 }
 
-func (c *Config) derivePublicOrigin() {
-	if strings.TrimSpace(c.PublicOrigin) != "" {
+func (c *Config) derivePublicURL() {
+	if strings.TrimSpace(c.PublicURL) != "" {
 		return
 	}
 	host := c.CertName
@@ -165,8 +165,8 @@ func (c *Config) derivePublicOrigin() {
 	}
 	h := originHost(host)
 	if (scheme == "http" && port == 80) || (scheme == "https" && port == 443) {
-		c.PublicOrigin = scheme + "://" + h
+		c.PublicURL = scheme + "://" + h
 		return
 	}
-	c.PublicOrigin = fmt.Sprintf("%s://%s:%d", scheme, h, port)
+	c.PublicURL = fmt.Sprintf("%s://%s:%d", scheme, h, port)
 }

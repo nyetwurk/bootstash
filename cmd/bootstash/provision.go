@@ -19,9 +19,9 @@ import (
 
 func runProvision(args []string) int {
 	fs := flag.NewFlagSet("provision-google", flag.ExitOnError)
-	cfgFile := fs.String("config", config.DefaultConfigPath, "operator config (read PUBLIC_ORIGIN)")
+	cfgFile := fs.String("config", config.DefaultConfigPath, "operator config (read PUBLIC_URL)")
 	secretsFile := fs.String("secrets", config.DefaultSecretsPath, "OIDC client secrets file to write")
-	origin := fs.String("origin", "", "PUBLIC_ORIGIN (default: read from operator config)")
+	origin := fs.String("origin", "", "PUBLIC_URL (default: read from operator config)")
 	project := fs.String("project", "", "GCP project id for console URLs")
 	jsonPath := fs.String("json", "", "downloaded Google Web application client JSON")
 	if err := fs.Parse(args); err != nil {
@@ -35,10 +35,10 @@ func runProvision(args []string) int {
 	}
 	pub := *origin
 	if pub == "" {
-		pub = cfg.PublicOrigin
+		pub = cfg.PublicURL
 	}
 	if pub == "" {
-		fmt.Fprintln(os.Stderr, "PUBLIC_ORIGIN is not set; pass -origin, add it to", *cfgFile, ", or give hostname -f a usable name")
+		fmt.Fprintln(os.Stderr, "PUBLIC_URL is not set; pass -origin, add it to", *cfgFile, ", or give hostname -f a usable name")
 		return 1
 	}
 	pub = strings.TrimRight(pub, "/")
@@ -113,17 +113,17 @@ func printGoogleSetup(w io.Writer, s googleSetup) {
 	fmt.Fprintln(w, "   Google account must work.")
 	fmt.Fprintln(w)
 
-	fmt.Fprintln(w, "3. OAuth client (one per PUBLIC_ORIGIN)")
+	fmt.Fprintln(w, "3. OAuth client (one per PUBLIC_URL)")
 	fmt.Fprintln(w, "   https://console.cloud.google.com/auth/clients"+q)
 	fmt.Fprintln(w, "   Recommend: type Web application. Name can be bootstash or the host.")
-	fmt.Fprintln(w, "   Authorized redirect URI (exact, $PUBLIC_ORIGIN/oidc/callback):")
+	fmt.Fprintln(w, "   Authorized redirect URI (exact, $PUBLIC_URL/oidc/callback):")
 	fmt.Fprintln(w, "    ", s.Redirect)
 	fmt.Fprintln(w, "   Paste that character-for-character. Leave other client fields empty.")
 	fmt.Fprintln(w, "   Authorized JavaScript origins: leave empty, or")
 	fmt.Fprintln(w, "    ", s.Pub)
 	fmt.Fprintln(w, "   with no path.")
 	if s.OriginSet {
-		fmt.Fprintln(w, "   PUBLIC_ORIGIN came from -origin.")
+		fmt.Fprintln(w, "   PUBLIC_URL came from -origin.")
 	} else if s.TLS {
 		fmt.Fprintln(w, "   HTTPS: PEMs found under /etc/bootstash/certs (TCP binds already")
 		fmt.Fprintln(w, "   speak HTTPS). Finding certs does not change BIND or move the port")

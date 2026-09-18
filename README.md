@@ -65,7 +65,7 @@ username. Identity is the provider’s `(issuer, sub)`.
 
 One or more binds: an **interface**, a **CIDR** of local addresses,
 **any** / one address, or a **Unix socket** (HTTP only, for a local
-proxy). How to set `BIND`, `PUBLIC_ORIGIN`, and TLS:
+proxy). How to set `BIND`, `PUBLIC_URL`, and TLS:
 [`QUICKSTART.md`](QUICKSTART.md).
 
 ## Your files vs everyone else's

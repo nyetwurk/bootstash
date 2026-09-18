@@ -51,7 +51,7 @@ func testServer(t *testing.T) (*Server, *store.Store, string) {
 	t.Helper()
 	dir := t.TempDir()
 	cfg := &config.Config{
-		PublicOrigin:       "https://stash.test",
+		PublicURL:          "https://stash.test",
 		Binds:              []string{"127.0.0.1:0"},
 		Data:               dir,
 		GoogleClientID:     "cid",

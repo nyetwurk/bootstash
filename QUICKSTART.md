@@ -4,14 +4,16 @@ Install the `.deb`. This is the operator recipe. Product and
 expectations: [`README.md`](README.md). Keys and files:
 `bootstash(5)`. Daemon: `bootstashd(8)`. CLI: `bootstash(8)`.
 
-`/etc/default/bootstash` ships with commented keys that match
-`/usr/lib/bootstash/default-dist` (derived keys left empty).
-Uncomment or add overrides. If configure detects a single `live/`
-lineage (or `live/$(hostname -f)`), it **appends** a commented
-`# CERT_NAME=` hint. The daemon still derives the name at runtime
-unless you uncomment it. It does not write `PUBLIC_ORIGIN` or other
-keys. If you delete the conffile, `dpkg -i` will not put it back;
-configure restores the commented keys from
+`/etc/default/bootstash` ships with commented `DATA`, `BIND`,
+`PUBLIC_URL`, and `ADMIN_USERS`. Add other overrides; packaged
+values stay in
+`/usr/lib/bootstash/default-dist`.
+If configure detects a single `live/`
+lineage (or `live/$(hostname -f)`), it inserts commented
+`# CERT_NAME=` and `# PUBLIC_URL=` hints after the file header
+(the URL the daemon would derive). The daemon still derives both
+at runtime unless you uncomment them. If you delete the conffile, `dpkg -i` will not put it back;
+configure restores the packaged pointer from
 `/usr/lib/bootstash/default`, or use `dpkg --force-confmiss -i`.
 Configure does not enable the unit. If the daemon is already
 running it `try-restart`s after the cert copy; if it is down it
@@ -26,7 +28,7 @@ certs).
 Packaged bind is `127.0.0.1:8080`. Set `BIND` before a phone can
 reach you (interface, CIDR, address, `*`, or `unix://`).
 
-`PUBLIC_ORIGIN` is the URL the **phone’s browser** uses for the OIDC
+`PUBLIC_URL` is the URL the **phone’s browser** uses for the OIDC
 callback (Google never connects to you). When unset it is
 `CERT_NAME` (see TLS) plus the first listen port, else
 `hostname -f`. `https` if cert and key are present. That name must
@@ -43,7 +45,7 @@ Not an ACME client. Default files, when both exist:
 `name` is `CERT_NAME`. If that is unset, the hook picks
 `live/$(hostname -f)` or the **only** `live/` lineage (it will not
 guess when there are several). After the copy, the daemon uses that
-directory as `CERT_NAME` and defaults `PUBLIC_ORIGIN` from it. Do
+directory as `CERT_NAME` and defaults `PUBLIC_URL` from it. Do
 **not** point `TLS_CERT` / `TLS_KEY` at `/etc/letsencrypt/live`.
 
 The packaged hook is `/usr/lib/bootstash/letsencrypt-deploy` (also

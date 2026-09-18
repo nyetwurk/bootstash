@@ -1,12 +1,11 @@
 # Copyright (C) 2026 Nye Liu
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Example overrides. Prefer the commented packaged values already in
-# /etc/default/bootstash; do not copy this file over it.
+# Example overrides. Do not copy this file over /etc/default/bootstash.
 # Google client JSON: bootstash provision-google
 # (installs /etc/bootstash/oidc-google.json, not this file).
 #
 # BIND=tun0:8443
-# PUBLIC_ORIGIN=https://stash.example
+# PUBLIC_URL=https://stash.example
 # CERT_NAME=stash.example
 # TLS_CERT=/etc/bootstash/certs/stash.example/fullchain.pem
 # TLS_KEY=/etc/bootstash/certs/stash.example/privkey.pem

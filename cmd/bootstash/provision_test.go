@@ -66,7 +66,7 @@ func TestInstallGoogleClientJSONCopiesDownload(t *testing.T) {
 	src := filepath.Join(dir, "client_secret.json")
 	sec := filepath.Join(dir, "oidc-google")
 	body := `{"web":{"client_id":"cid.apps.googleusercontent.com","client_secret":"sekrit","project_id":"bootstash"}}` + "\n"
-	if err := os.WriteFile(op, []byte("PUBLIC_ORIGIN=https://stash.test\nBIND=lo:8080\n"), 0640); err != nil {
+	if err := os.WriteFile(op, []byte("PUBLIC_URL=https://stash.test\nBIND=lo:8080\n"), 0640); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(src, []byte(body), 0600); err != nil {

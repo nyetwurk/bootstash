@@ -12,7 +12,7 @@ func (s *Server) checkCSRF(r *http.Request) bool {
 	cfg := s.config()
 	origin := strings.TrimRight(r.Header.Get("Origin"), "/")
 	if origin != "" {
-		return origin == cfg.PublicOrigin
+		return origin == cfg.PublicURL
 	}
 	site := r.Header.Get("Sec-Fetch-Site")
 	switch site {
@@ -22,7 +22,7 @@ func (s *Server) checkCSRF(r *http.Request) bool {
 		// User-initiated same-origin navigations may send none; still require
 		// the public origin as Referer when Origin is missing.
 		ref := r.Header.Get("Referer")
-		return strings.HasPrefix(ref, cfg.PublicOrigin+"/") || ref == cfg.PublicOrigin
+		return strings.HasPrefix(ref, cfg.PublicURL+"/") || ref == cfg.PublicURL
 	default:
 		return false
 	}

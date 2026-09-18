@@ -25,7 +25,7 @@ user
 .BR bootstash .
 .PP
 The daemon refuses to start until
-.B PUBLIC_ORIGIN
+.B PUBLIC_URL
 is set or can be derived from
 .B hostname \-f
 and the first TCP
@@ -82,8 +82,12 @@ after config is loaded, including while waiting for a missing interface).
 Dist defaults (not a conffile).
 .TP
 .I /etc/default/bootstash
-Operator config; commented keys matching
-.I default-dist
+Operator config; commented
+.BR DATA ,
+.BR BIND ,
+.BR PUBLIC_URL ,
+and
+.BR ADMIN_USERS
 on install. See
 .BR bootstash (5).
 .TP

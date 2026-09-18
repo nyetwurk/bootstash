@@ -25,7 +25,7 @@ README “Expectations.”
 - Google only in v1. A later IdP is a new adapter + helper-owned keys
   under `/etc/bootstash/`, not a new session model
 - Not ACME. HTTPS uses `TLS_CERT` / `TLS_KEY`, or
-  `/etc/bootstash/certs/<CERT_NAME>/`. `PUBLIC_ORIGIN` defaults from
+  `/etc/bootstash/certs/<CERT_NAME>/`. `PUBLIC_URL` defaults from
   `CERT_NAME` (hook picks the only `live/` lineage when unset). Do
   not read `/etc/letsencrypt/live`. Never copy every `live/` cert.
 - Not `/etc/bootstash.d/`. Not systemd `EnvironmentFile=` or empty
@@ -36,8 +36,8 @@ README “Expectations.”
 
 Load order: built-in (embed of `internal/config/default-dist`) /
 `/usr/lib/bootstash/default-dist` (not a
-conffile), then `/etc/default/bootstash` (conffile; commented keys match
-`default-dist` or are unset/derived; operator diffs only), then
+conffile), then `/etc/default/bootstash` (conffile; commented `DATA`, `BIND`,
+`PUBLIC_URL`, `ADMIN_USERS`; operator diffs), then
 `/etc/bootstash/oidc-google.json` (helper-written; not a
 conffile). Later scalars win. If the operator file mentions `BIND` at
 all, those lines replace the packaged listen list. Secrets **cannot**
@@ -53,14 +53,15 @@ SIGHUP re-reads all three; on parse failure **keep the last good
 config**. Same for a bad TLS pair (keep the previous cert).
 
 If `CERT_NAME` is unset, the hook (root, can read `live/`) chooses
-one: operator `CERT_NAME`, `PUBLIC_ORIGIN` host, `live/$(hostname
+one: operator `CERT_NAME`, `PUBLIC_URL` host, `live/$(hostname
 -f)`, or the only `live/` lineage. It copies that one directory
-and may append a commented `# CERT_NAME=` hint (`hostname -f` or
-only lineage). The daemon still derives the name unless the
-operator uncomments it. The hook does not rewrite other keys or
-`PUBLIC_ORIGIN`. The daemon cannot read `live/`; it treats an
+and may insert commented `# CERT_NAME=` and `# PUBLIC_URL=`
+hints after the operator-file header (`hostname -f` or only
+lineage). `PUBLIC_URL` is the value the daemon would derive. The daemon still derives both
+unless the operator uncomments them. The hook does not rewrite
+operator keys. The daemon cannot read `live/`; it treats an
 explicit `CERT_NAME`, `certs/$(hostname -f)`, or the only
-`certs/<name>/` pair as `CERT_NAME`. If `PUBLIC_ORIGIN` is unset,
+`certs/<name>/` pair as `CERT_NAME`. If `PUBLIC_URL` is unset,
 it is `http(s)://$CERT_NAME:port`, else `hostname -f`. Omit ports
 80 and 443. Do not use `localhost`. Several `live/` lineages and
 no `CERT_NAME`: `sync` prints the list and copies nothing. No FQDN
@@ -110,7 +111,7 @@ rejected. Unix sockets are HTTP only.
 Every file `open`/`create`/`unlink` is `openat` from the jail root.
 Reject `..`, NUL, and outbound symlinks. DELETE of a non-empty
 directory is 409. Do not serve `state/`. CSRF (`Origin` or
-`Sec-Fetch-Site` vs `PUBLIC_ORIGIN`) on every state-changing request.
+`Sec-Fetch-Site` vs `PUBLIC_URL`) on every state-changing request.
 New HTTP files `0660`, dirs `0770`.
 
 Routes: `/login`, `/oidc/callback`, `/link`, `/unlink`, `/files/`,
@@ -126,7 +127,7 @@ OIDC first (Google issuer `https://accounts.google.com`). Then PAM
 to at most one PAM user; one PAM user may have several subjects.
 
 The helper prints the four-step recipe and
-`$PUBLIC_ORIGIN/oidc/callback`, then installs the downloaded
+`$PUBLIC_URL/oidc/callback`, then installs the downloaded
 client JSON. It does **not** create the Google web client
 (`gcloud` cannot). It does not create Unix users.
 

@@ -9,9 +9,9 @@
 #   (no args)  RENEWED_LINEAGE if it is the chosen name
 #   sync       copy the chosen live/ lineage (package configure)
 #
-# Chosen name, in order: CERT_NAME, PUBLIC_ORIGIN host,
+# Chosen name, in order: CERT_NAME, PUBLIC_URL host,
 # live/$(hostname -f), the only live/ lineage. An existing dest
-# dir is also wanted (opt-in). PUBLIC_ORIGIN in the daemon
+# dir is also wanted (opt-in). PUBLIC_URL in the daemon
 # defaults from that name.
 set -eu
 
@@ -42,7 +42,7 @@ last_key() {
 }
 
 origin_host() {
-	u=$(last_key PUBLIC_ORIGIN)
+	u=$(last_key PUBLIC_URL)
 	[ -n "$u" ] || return 0
 	u=${u#http://}
 	u=${u#https://}
@@ -57,6 +57,58 @@ origin_host() {
 		;;
 	esac
 	printf '%s' "$u"
+}
+
+# First uncommented BIND= (same order as the daemon).
+first_bind() {
+	file=$1
+	[ -r "$file" ] || return 0
+	while IFS= read -r line || [ -n "$line" ]; do
+		case $line in
+		'' | '#'*) continue ;;
+		esac
+		k=${line%%=*}
+		k=$(printf '%s' "$k" | tr -d ' \t')
+		[ "$k" = BIND ] || continue
+		v=${line#*=}
+		v=$(printf '%s' "$v" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^"//;s/"$//;s/^'\''//;s/'\''$//')
+		printf '%s' "$v"
+		return 0
+	done <"$file"
+}
+
+# Same as config.derivePublicURL: CERT_NAME host, first TCP BIND
+# (else default-dist / 8080), https if the dest pair exists, omit
+# 80 and 443.
+derived_public_url() {
+	host=$1
+	[ -n "$host" ] || return 0
+	bind=$(first_bind "$op")
+	[ -n "$bind" ] || bind=$(first_bind /usr/lib/bootstash/default-dist)
+	[ -n "$bind" ] || bind=127.0.0.1:8080
+	port=
+	case $bind in
+	unix:* | unix@*) ;;
+	'['*)
+		rest=${bind#*]}
+		port=${rest#:}
+		;;
+	*:*)
+		port=${bind##*:}
+		;;
+	esac
+	case $port in
+	'' | *[!0-9]*) return 0 ;;
+	esac
+	scheme=http
+	if [ -f "$certs/$host/fullchain.pem" ] && [ -f "$certs/$host/privkey.pem" ]; then
+		scheme=https
+	fi
+	if { [ "$scheme" = http ] && [ "$port" = 80 ]; } || { [ "$scheme" = https ] && [ "$port" = 443 ]; }; then
+		printf '%s://%s' "$scheme" "$host"
+		return 0
+	fi
+	printf '%s://%s:%s' "$scheme" "$host" "$port"
 }
 
 list_live() {
@@ -81,7 +133,7 @@ if [ -n "$cert_name" ]; then
 	how=CERT_NAME
 elif [ -n "$origin" ]; then
 	chosen=$origin
-	how=PUBLIC_ORIGIN
+	how=PUBLIC_URL
 elif [ -n "$fqdn" ] && [ -f "$live/$fqdn/fullchain.pem" ]; then
 	chosen=$fqdn
 	how='hostname -f'
@@ -128,10 +180,12 @@ maybe_reload() {
 	fi
 }
 
-# Leave a commented CERT_NAME= hint when we detected it (only lineage
-# or hostname -f). Runtime still decides unless the operator uncomments
-# it. Do not rewrite operator keys. provision-google still does not
-# touch this file.
+# Insert commented CERT_NAME= and PUBLIC_URL= hints after the
+# packaged header when we detected the name (only lineage or
+# hostname -f). PUBLIC_URL is what the daemon would derive.
+# Runtime still decides unless the operator uncomments. Do not
+# rewrite operator keys. provision-google still does not touch
+# this file.
 persist_cert_name() {
 	[ -n "$chosen" ] || return 0
 	case $how in
@@ -156,8 +210,57 @@ persist_cert_name() {
 		return 0
 		;;
 	esac
-	printf '\n# Detected by letsencrypt-deploy (%s). Uncomment to pin.\n# CERT_NAME=%s\n' "$how" "$chosen" >>"$op"
-	echo "bootstash: wrote commented CERT_NAME=$chosen in $op (runtime still decides)" >&2
+	url=
+	if [ -z "$(last_key PUBLIC_URL)" ]; then
+		url=$(derived_public_url "$chosen")
+	fi
+	tmp=$op.tmp.$$
+	hdr=$tmp.hdr
+	body=$tmp.body
+	: >"$hdr"
+	: >"$body"
+	have_hdr=0
+	phase=hdr
+	while IFS= read -r line || [ -n "$line" ]; do
+		if [ "$phase" = hdr ]; then
+			case $line in
+			'# See bootstash(5)'* | '# Add only overrides.'* | '# OIDC:'*)
+				printf '%s\n' "$line" >>"$hdr"
+				have_hdr=1
+				continue
+				;;
+			'#' | '# ')
+				if [ "$have_hdr" = 1 ]; then
+					printf '%s\n' "$line" >>"$hdr"
+					phase=body
+					continue
+				fi
+				;;
+			esac
+			phase=body
+		fi
+		if [ -n "$url" ] && [ "$line" = '# PUBLIC_URL=' ]; then
+			continue
+		fi
+		printf '%s\n' "$line" >>"$body"
+	done <"$op"
+	{
+		cat "$hdr"
+		printf '# Detected by letsencrypt-deploy (%s). Uncomment to pin.\n# CERT_NAME=%s\n' "$how" "$chosen"
+		if [ -n "$url" ]; then
+			printf '# PUBLIC_URL=%s\n' "$url"
+		fi
+		printf '\n'
+		cat "$body"
+	} >"$tmp"
+	chmod --reference="$op" "$tmp" 2>/dev/null || chmod 0644 "$tmp"
+	rm -f "$hdr" "$body"
+	mv "$tmp" "$op"
+	if [ -n "$url" ]; then
+		echo "bootstash: wrote commented CERT_NAME=$chosen PUBLIC_URL=$url in $op (runtime still decides)" >&2
+	else
+		echo "bootstash: wrote commented CERT_NAME=$chosen in $op (runtime still decides)" >&2
+	fi
 }
 
 sync_live() {
@@ -177,7 +280,7 @@ sync_live() {
 		persist_cert_name
 		return 0
 	fi
-	echo "bootstash: no live/ lineage to copy (hostname -f=${fqdn:-unset} CERT_NAME=${cert_name:-unset} PUBLIC_ORIGIN host=${origin:-unset})" >&2
+	echo "bootstash: no live/ lineage to copy (hostname -f=${fqdn:-unset} CERT_NAME=${cert_name:-unset} PUBLIC_URL host=${origin:-unset})" >&2
 	avail=$(list_live | tr '\n' ' ')
 	if [ -n "$avail" ]; then
 		echo "bootstash: live/ has: $avail" >&2

@@ -26,15 +26,14 @@ append to each other). The secrets file cannot change
 .BR BIND .
 .PP
 .I /etc/default/bootstash
-is a conffile and ships with commented keys whose values match
-.I /usr/lib/bootstash/default-dist
-(plus empty
-.BR PUBLIC_ORIGIN ,
-.BR CERT_NAME ,
-.BR TLS_* ,
-.BR ADMIN_USERS
-, which are derived unless set). Add only keys that differ from
-.IR default-dist .
+is a conffile and ships with commented
+.BR DATA ,
+.BR BIND ,
+.BR PUBLIC_URL ,
+and
+.BR ADMIN_USERS .
+Add only keys that differ from
+.IR /usr/lib/bootstash/default-dist .
 Do not copy the full dist file into
 .IR /etc/default/bootstash .
 .B bootstash provision-google
@@ -62,7 +61,7 @@ is the Google Web application client JSON
 .B bootstash provision-google
 installs. It is not a conffile. Do not put
 .BR BIND ,
-.BR PUBLIC_ORIGIN ,
+.BR PUBLIC_URL ,
 or other operator keys there.
 .PP
 Format:
@@ -78,7 +77,7 @@ do not use systemd
 .BR EnvironmentFile= .
 .SH KEYS
 .TP
-.B PUBLIC_ORIGIN
+.B PUBLIC_URL
 Browser-facing URL (scheme and host, no trailing slash).
 Used for OIDC redirects, cookies, and CSRF Origin checks.
 When unset, the daemon uses
@@ -148,14 +147,14 @@ pair. Several lineages and no
 :
 .B sync
 prints the list and copies nothing.
-A successful detect
-.B appends
-a commented
+A successful detect inserts
+commented
 .B CERT_NAME=
-hint (does not rewrite other keys). The daemon still
-derives the name unless that line is uncommented.
-.B PUBLIC_ORIGIN
-defaults from this name.
+and
+.B PUBLIC_URL=
+hints (the URL the daemon would derive; does not rewrite
+operator keys). The daemon still derives both unless those
+lines are uncommented.
 Not an ACME client.
 .TP
 .B DATA

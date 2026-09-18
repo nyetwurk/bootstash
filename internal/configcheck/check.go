@@ -38,7 +38,7 @@ func Check(defaultsPath, configPath, secretsPath string) (*config.Config, error)
 
 // Summary is the check-config / startup line (no secrets).
 func Summary(cfg *config.Config) string {
-	s := fmt.Sprintf("origin=%s binds=%s", cfg.PublicOrigin, strings.Join(cfg.Binds, ","))
+	s := fmt.Sprintf("url=%s binds=%s", cfg.PublicURL, strings.Join(cfg.Binds, ","))
 	if len(cfg.AdminUsers) > 0 {
 		s += " admins=" + strings.Join(cfg.AdminUsers, ",")
 	}

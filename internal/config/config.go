@@ -26,7 +26,7 @@ const (
 
 // Config is the merged runtime configuration.
 type Config struct {
-	PublicOrigin       string
+	PublicURL          string
 	Binds              []string
 	TLSCert            string
 	TLSKey             string
@@ -102,14 +102,14 @@ func Load(defaultsPath, configPath, secretsPath string) (*Config, error) {
 	}
 	cfg.deriveCertName()
 	cfg.deriveTLSFiles()
-	cfg.derivePublicOrigin()
+	cfg.derivePublicURL()
 	return cfg, nil
 }
 
 // Ready reports whether the operator has supplied keys required to serve.
 func (c *Config) Ready() error {
-	if strings.TrimSpace(c.PublicOrigin) == "" {
-		return fmt.Errorf("PUBLIC_ORIGIN is not set (write it in %s, or set CERT_NAME / install certs)", c.ConfigPath)
+	if strings.TrimSpace(c.PublicURL) == "" {
+		return fmt.Errorf("PUBLIC_URL is not set (write it in %s, or set CERT_NAME / install certs)", c.ConfigPath)
 	}
 	if strings.TrimSpace(c.GoogleClientID) == "" {
 		return fmt.Errorf("OIDC_GOOGLE_CLIENT_ID is not set (install the Google client JSON in %s or run bootstash provision-google)", c.SecretsPath)
@@ -124,7 +124,7 @@ func (c *Config) Ready() error {
 }
 
 func (c *Config) apply(m map[string][]string) error {
-	c.PublicOrigin = strings.TrimRight(first(m, "PUBLIC_ORIGIN"), "/")
+	c.PublicURL = strings.TrimRight(first(m, "PUBLIC_URL"), "/")
 	c.Binds = append([]string(nil), m["BIND"]...)
 	c.TLSCert = first(m, "TLS_CERT")
 	c.TLSKey = first(m, "TLS_KEY")

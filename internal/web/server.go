@@ -189,7 +189,7 @@ func (s *Server) session(r *http.Request) *store.Session {
 }
 
 func (s *Server) cookieName() string {
-	if strings.HasPrefix(s.config().PublicOrigin, "https://") {
+	if strings.HasPrefix(s.config().PublicURL, "https://") {
 		return "__Host-bootstash"
 	}
 	return "bootstash"
@@ -197,7 +197,7 @@ func (s *Server) cookieName() string {
 
 func (s *Server) setSessionCookie(w http.ResponseWriter, sess *store.Session) {
 	cfg := s.config()
-	secure := strings.HasPrefix(cfg.PublicOrigin, "https://")
+	secure := strings.HasPrefix(cfg.PublicURL, "https://")
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.cookieName(),
 		Value:    sess.ID,
@@ -210,7 +210,7 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, sess *store.Session) {
 }
 
 func (s *Server) redirectURI() string {
-	return s.config().PublicOrigin + "/oidc/callback"
+	return s.config().PublicURL + "/oidc/callback"
 }
 
 func randomHex(n int) (string, error) {
