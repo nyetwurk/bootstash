@@ -51,7 +51,8 @@ func TestCheckBadBind(t *testing.T) {
 func TestCheckMissingOrigin(t *testing.T) {
 	dir := t.TempDir()
 	ov := filepath.Join(dir, "config")
-	if err := os.WriteFile(ov, []byte("OIDC_GOOGLE_CLIENT_ID=cid\n"), 0600); err != nil {
+	// Unix-only BIND has no TCP port, so hostname -f cannot fill PUBLIC_ORIGIN.
+	if err := os.WriteFile(ov, []byte("OIDC_GOOGLE_CLIENT_ID=cid\nBIND=unix:///tmp/bootstash.sock\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Check("", ov, filepath.Join(dir, "nosecrets")); err == nil {

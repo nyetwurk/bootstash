@@ -26,10 +26,14 @@ user
 .PP
 The daemon refuses to start until
 .B PUBLIC_ORIGIN
-is set (operator config) and
+is set or can be derived from
+.B hostname \-f
+and the first TCP
+.B BIND
+port, and
 .B OIDC_GOOGLE_CLIENT_ID
-is set (usually
-.IR /etc/bootstash/oidc-google ).
+is set (usually the Google client JSON in
+.IR /etc/bootstash/oidc-google.json ).
 .SH OPTIONS
 .TP
 .BR \-V ", " \-\-version
@@ -38,12 +42,12 @@ Print the version from
 and exit.
 .TP
 .BR \-t ", " \-\-check\-config
-Parse packaged defaults, operator config, secrets file, BIND specs, and
+Parse dist defaults, operator config, secrets file, BIND specs, and
 TLS files (if set). Print a short summary and exit. Does not listen.
 .TP
 .BI \-defaults " path"
-Packaged defaults file. Default:
-.IR /usr/lib/bootstash/defaults.conf .
+Dist defaults file. Default:
+.IR /usr/lib/bootstash/default-dist .
 .TP
 .BI \-config " path"
 Operator config. Default:
@@ -51,11 +55,11 @@ Operator config. Default:
 .TP
 .BI \-secrets " path"
 OIDC client secrets. Default:
-.IR /etc/bootstash/oidc-google .
+.IR /etc/bootstash/oidc-google.json .
 .SH SIGNALS
 .TP
 .B SIGHUP
-Re-read packaged defaults, operator config, and the secrets file
+Re-read dist defaults, operator config, and the secrets file
 (keep the last good config on parse failure),
 reload TLS certificate and key from disk (keep the previous cert on
 failure), and re-sync CIDR/interface listeners without dropping unrelated
@@ -74,14 +78,16 @@ The packaged unit is
 after config is loaded, including while waiting for a missing interface).
 .SH FILES
 .TP
-.I /usr/lib/bootstash/defaults.conf
-Packaged defaults (not a conffile).
+.I /usr/lib/bootstash/default-dist
+Dist defaults (not a conffile).
 .TP
 .I /etc/default/bootstash
-Operator config; empty on install. See
+Operator config; commented keys matching
+.I default-dist
+on install. See
 .BR bootstash (5).
 .TP
-.I /etc/bootstash/oidc-google
+.I /etc/bootstash/oidc-google.json
 Google OIDC client id/secret. Written by
 .B bootstash provision-google .
 Not a conffile.

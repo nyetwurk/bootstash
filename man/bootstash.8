@@ -20,15 +20,16 @@ is the operator CLI for the bootstash daemon. It does not serve HTTP or
 call PAM.
 .B provision-google
 writes Google OIDC client keys into
-.IR /etc/bootstash/oidc-google ;
+.IR /etc/bootstash/oidc-google.json ;
 it does not create the Google OAuth web client and it does not edit
 .IR /etc/default/bootstash .
 .SH COMMANDS
 .TP
 .B check-config
-Parse packaged defaults,
+Parse dist defaults
+.RI ( /usr/lib/bootstash/default-dist ),
 .IR /etc/default/bootstash ,
-.IR /etc/bootstash/oidc-google ,
+.IR /etc/bootstash/oidc-google.json ,
 every
 .B BIND
 spec, and TLS files when set. Exit 0 if the daemon could start (missing
@@ -36,15 +37,27 @@ interfaces are not an error here). Same as
 .B bootstashd \-t .
 .TP
 .B provision-google
-Print the redirect URI and Google Auth Platform URLs, then write the
-Client ID and Client secret you paste to
-.IR /etc/bootstash/oidc-google .
+Print a four-step Google console recipe with a recommended
+value at each step, then install the Web application
+client JSON the console downloads as
+.IR /etc/bootstash/oidc-google.json
+.RB ( \-json
+or a prompted path).
 Reads
 .B PUBLIC_ORIGIN
 from
 .I /etc/default/bootstash
 (or
 .BR \-origin ).
+If unset, the same
+.B hostname \-f
+plus listen-port default as
+.BR bootstashd
+is used.
+Needs root (or
+.BR sudo )
+to write that file; it does not write TLS certs (the Let’s Encrypt
+hook does).
 It does not create the Google OAuth web client.
 .TP
 .B version
@@ -62,7 +75,7 @@ Operator config to read. Default:
 .TP
 .BI \-secrets " path"
 OIDC client secrets file. Default:
-.IR /etc/bootstash/oidc-google .
+.IR /etc/bootstash/oidc-google.json .
 .SH SEE ALSO
 .BR bootstashd (8),
 .BR bootstash (5),

@@ -1,17 +1,19 @@
 .TH BOOTSTASH 5 "September 2026" "bootstash" "File Formats"
 .SH NAME
-bootstash \- operator config, packaged defaults, and OIDC secrets
+bootstash \- operator config, dist defaults, and OIDC secrets
 .SH SYNOPSIS
 .I /etc/default/bootstash
 .br
-.I /usr/lib/bootstash/defaults.conf
+.I /usr/lib/bootstash/default-dist
 .br
-.I /etc/bootstash/oidc-google
+.I /etc/bootstash/oidc-google.json
 .SH DESCRIPTION
-bootstashd reads packaged defaults, then
+bootstashd reads dist defaults
+.RI ( /usr/lib/bootstash/default-dist ),
+then
 .IR /etc/default/bootstash ,
 then
-.IR /etc/bootstash/oidc-google .
+.IR /etc/bootstash/oidc-google.json .
 Later source wins for scalars. If the operator file mentions
 .B BIND
 at all, its
@@ -24,17 +26,41 @@ append to each other). The secrets file cannot change
 .BR BIND .
 .PP
 .I /etc/default/bootstash
-is a conffile and ships empty (one frozen comment line). Add only keys
-that differ from the packaged defaults. Do not copy the full defaults
-into
+is a conffile and ships with commented keys whose values match
+.I /usr/lib/bootstash/default-dist
+(plus empty
+.BR PUBLIC_ORIGIN ,
+.BR CERT_NAME ,
+.BR TLS_* ,
+.BR ADMIN_USERS
+, which are derived unless set). Add only keys that differ from
+.IR default-dist .
+Do not copy the full dist file into
 .IR /etc/default/bootstash .
 .B bootstash provision-google
 does not write this file.
+If the operator deletes this conffile,
+.B dpkg
+will not restore it;
+configure copies
+.I /usr/lib/bootstash/default
+back if the path is missing. It does not enable the unit.
+If the daemon is already running it
+.BR try-restart s
+after the cert copy; if it is down it starts only when
+.B bootstash check-config
+would pass (same as
+.BR bootstashd \-t ).
+First install without a Google client id stays down.
+It prints remaining steps (daemon not started or not enabled on
+boot, no Google client id, loopback
+.BR BIND ,
+no copied certs).
 .PP
-.I /etc/bootstash/oidc-google
-is written by
+.I /etc/bootstash/oidc-google.json
+is the Google Web application client JSON
 .B bootstash provision-google
-(Google client id and secret). It is not a conffile. Do not put
+installs. It is not a conffile. Do not put
 .BR BIND ,
 .BR PUBLIC_ORIGIN ,
 or other operator keys there.
@@ -53,10 +79,21 @@ do not use systemd
 .SH KEYS
 .TP
 .B PUBLIC_ORIGIN
-Browser-facing URL (scheme and host, no trailing slash). Required.
+Browser-facing URL (scheme and host, no trailing slash).
 Used for OIDC redirects, cookies, and CSRF Origin checks.
-Write this in
-.IR /etc/default/bootstash .
+When unset, the daemon uses
+.B CERT_NAME
+(or
+.B hostname \-f
+if none) and the first TCP
+.B BIND
+port, with scheme
+.B https
+when cert files are present.
+Ports 80 and 443 are omitted.
+.B localhost
+is not used.
+Write this when the phone’s URL is not that host.
 .TP
 .B BIND
 Repeatable listen spec:
@@ -80,11 +117,45 @@ it keeps the previous listeners.
 A missing interface is retried at start and kept on reload.
 .TP
 .B TLS_CERT / TLS_KEY
-If both are set, TCP binds use HTTPS with these files (for example Let’s
-Encrypt
-.I fullchain.pem
+If both are set, TCP binds use HTTPS with these files.
+When unset, the daemon uses
+.I /etc/bootstash/certs/<name>/fullchain.pem
 and
-.IR privkey.pem ).
+.I privkey.pem
+if both exist.
+.I name
+is
+.BR CERT_NAME
+(see below).
+Do not point these at
+.IR /etc/letsencrypt/live
+.RB ( User=bootstash
+cannot read it).
+.TP
+.B CERT_NAME
+Let’s Encrypt lineage / directory under
+.IR /etc/bootstash/certs .
+When unset, the hook (which can read
+.IR live/ )
+chooses
+.BR live/ $(hostname -f)
+or the only
+.I live/
+lineage; the daemon then sees that
+.I certs/<name>/
+pair. Several lineages and no
+.B CERT_NAME
+:
+.B sync
+prints the list and copies nothing.
+A successful detect
+.B appends
+a commented
+.B CERT_NAME=
+hint (does not rewrite other keys). The daemon still
+derives the name unless that line is uncommented.
+.B PUBLIC_ORIGIN
+defaults from this name.
 Not an ACME client.
 .TP
 .B DATA
@@ -93,12 +164,20 @@ Data volume. Default
 .TP
 .B OIDC_GOOGLE_CLIENT_ID / OIDC_GOOGLE_CLIENT_SECRET
 Google web OAuth client. Client ID is required to start.
+These keys may appear in
+.I /etc/default/bootstash .
+The secrets file
+.I /etc/bootstash/oidc-google.json
+is the JSON the Google console downloads
+.RB ( web.client_id
+/
+.BR web.client_secret ).
 .B bootstash provision-google
-writes these into
-.IR /etc/bootstash/oidc-google .
-They may also appear in
-.I /etc/default/bootstash
-(secrets file wins if both set).
+installs that file
+.RB ( 0640
+.BR root:bootstash ).
+JSON secrets win if both are set. A KEY=value secrets file is still
+read.
 .TP
 .B OIDC_CRYPTO
 Optional HMAC key (at least 32 bytes, or hex). If unset, a key is created
@@ -138,12 +217,29 @@ Not a Unix group and not an application user table.
 .SH FILES
 .TP
 .I /etc/bootstash
-Directory for helper-written secrets
+Directory for helper-written secrets and copied TLS files
 .RB ( 0750
 .BR root:bootstash ).
 Created by tmpfiles or the helper. Do not use systemd
 .BR ConfigurationDirectory= .
+.TP
+.I /etc/bootstash/certs/<name>
+.I fullchain.pem
+and
+.I privkey.pem
+readable by
+.BR bootstash
+.RB ( 0640
+.BR root:bootstash ).
+Filled by
+.IR /usr/lib/bootstash/letsencrypt-deploy
+(linked from
+.IR /etc/letsencrypt/renewal-hooks/deploy/bootstash ).
+Certbot runs that hook on issue and renew for the
+chosen lineage. The package runs
+.B letsencrypt-deploy sync
+on configure (prints if nothing matches). See
+.IR /usr/share/doc/bootstash/QUICKSTART.md .
 .SH SEE ALSO
 .BR bootstashd (8),
-.BR bootstash (8),
-.IR /usr/share/doc/bootstash/QUICKSTART.md
+.BR bootstash (8)

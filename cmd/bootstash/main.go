@@ -35,7 +35,7 @@ func main() {
 }
 
 func runCheck(args []string) int {
-	defaults := config.DefaultDefaultsPath
+	defaults := config.DefaultDistPath
 	cfgFile := config.DefaultConfigPath
 	secretsFile := config.DefaultSecretsPath
 	for i := 0; i < len(args); i++ {
@@ -79,7 +79,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "usage: bootstash <command> [options]\n")
 	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "commands:\n")
-	fmt.Fprintf(os.Stderr, "  check-config       parse defaults, operator config, secrets, and BIND specs, then exit\n")
-	fmt.Fprintf(os.Stderr, "  provision-google   print Google OIDC redirect URI and write client keys\n")
+	fmt.Fprintf(os.Stderr, "  check-config       parse dist defaults, operator config, secrets, and BIND specs, then exit\n")
+	fmt.Fprintf(os.Stderr, "  provision-google   print Google OIDC recipe and install the downloaded client JSON\n")
 	fmt.Fprintf(os.Stderr, "  version            print git describe version\n")
 }

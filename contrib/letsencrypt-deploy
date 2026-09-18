@@ -1,0 +1,203 @@
+#!/bin/sh
+# Copyright (C) 2026 Nye Liu
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Certbot deploy hook. Copies one chosen lineage out of
+# /etc/letsencrypt/live into /etc/bootstash/certs/<name>.
+# Not an ACME client. Does not copy every live/ cert.
+#
+#   (no args)  RENEWED_LINEAGE if it is the chosen name
+#   sync       copy the chosen live/ lineage (package configure)
+#
+# Chosen name, in order: CERT_NAME, PUBLIC_ORIGIN host,
+# live/$(hostname -f), the only live/ lineage. An existing dest
+# dir is also wanted (opt-in). PUBLIC_ORIGIN in the daemon
+# defaults from that name.
+set -eu
+
+[ -d /etc/bootstash ] || exit 0
+getent group bootstash >/dev/null 2>&1 || exit 0
+
+certs=/etc/bootstash/certs
+op=/etc/default/bootstash
+fqdn=$(hostname -f 2>/dev/null || true)
+live=/etc/letsencrypt/live
+
+last_key() {
+	key=$1
+	[ -r "$op" ] || return 0
+	val=
+	while IFS= read -r line || [ -n "$line" ]; do
+		case $line in
+		''|'#'*) continue ;;
+		esac
+		k=${line%%=*}
+		v=${line#*=}
+		k=$(printf '%s' "$k" | tr -d ' \t')
+		[ "$k" = "$key" ] || continue
+		v=$(printf '%s' "$v" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^"//;s/"$//;s/^'\''//;s/'\''$//')
+		val=$v
+	done <"$op"
+	printf '%s' "$val"
+}
+
+origin_host() {
+	u=$(last_key PUBLIC_ORIGIN)
+	[ -n "$u" ] || return 0
+	u=${u#http://}
+	u=${u#https://}
+	u=${u%%/*}
+	case $u in
+	'['*)
+		u=${u#\[}
+		u=${u%%]*}
+		;;
+	*)
+		u=${u%%:*}
+		;;
+	esac
+	printf '%s' "$u"
+}
+
+list_live() {
+	[ -d "$live" ] || return 0
+	for d in "$live"/*; do
+		[ -d "$d" ] || continue
+		name=$(basename "$d")
+		[ "$name" != README ] || continue
+		[ -f "$d/fullchain.pem" ] && [ -f "$d/privkey.pem" ] || continue
+		printf '%s\n' "$name"
+	done
+}
+
+cert_name=$(last_key CERT_NAME)
+origin=$(origin_host)
+
+# One name. Empty if we will not guess (several live/ lineages).
+chosen=
+how=
+if [ -n "$cert_name" ]; then
+	chosen=$cert_name
+	how=CERT_NAME
+elif [ -n "$origin" ]; then
+	chosen=$origin
+	how=PUBLIC_ORIGIN
+elif [ -n "$fqdn" ] && [ -f "$live/$fqdn/fullchain.pem" ]; then
+	chosen=$fqdn
+	how='hostname -f'
+else
+	n=0
+	only=
+	for name in $(list_live); do
+		n=$((n + 1))
+		only=$name
+	done
+	if [ "$n" = 1 ]; then
+		chosen=$only
+		how='only live/ lineage'
+	fi
+fi
+
+wanted() {
+	name=$1
+	[ -n "$name" ] || return 1
+	[ -n "$chosen" ] && [ "$name" = "$chosen" ] && return 0
+	[ -d "$certs/$name" ] && return 0
+	return 1
+}
+
+deploy_lineage() {
+	lineage=$1
+	name=$(basename "$lineage")
+	[ -n "$name" ] && [ "$name" != . ] && [ "$name" != .. ] || return 1
+	[ -f "$lineage/fullchain.pem" ] && [ -f "$lineage/privkey.pem" ] || return 1
+	wanted "$name" || return 1
+	install -d -m 0750 -o root -g bootstash "$certs"
+	install -d -m 0750 -o root -g bootstash "$certs/$name"
+	install -m 0640 -o root -g bootstash "$lineage/fullchain.pem" "$certs/$name/fullchain.pem"
+	install -m 0640 -o root -g bootstash "$lineage/privkey.pem" "$certs/$name/privkey.pem"
+	why=$how
+	[ -n "$why" ] || why='existing dest'
+	echo "bootstash: copied $lineage -> $certs/$name ($why)" >&2
+	return 0
+}
+
+maybe_reload() {
+	if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet bootstash; then
+		systemctl reload bootstash || true
+	fi
+}
+
+# Leave a commented CERT_NAME= hint when we detected it (only lineage
+# or hostname -f). Runtime still decides unless the operator uncomments
+# it. Do not rewrite operator keys. provision-google still does not
+# touch this file.
+persist_cert_name() {
+	[ -n "$chosen" ] || return 0
+	case $how in
+	'only live/ lineage' | 'hostname -f') ;;
+	*) return 0 ;;
+	esac
+	[ -z "$(last_key CERT_NAME)" ] || return 0
+	if [ ! -f "$op" ]; then
+		if [ -f /usr/lib/bootstash/default ]; then
+			install -m 0644 /usr/lib/bootstash/default "$op"
+		else
+			install -d -m 0755 /etc/default
+			: >"$op"
+		fi
+	fi
+	if grep -q '^# Detected by letsencrypt-deploy' "$op" 2>/dev/null; then
+		return 0
+	fi
+	case $chosen in
+	'' | *[!A-Za-z0-9.-]*)
+		echo "bootstash: not writing CERT_NAME hint (unsafe name)" >&2
+		return 0
+		;;
+	esac
+	printf '\n# Detected by letsencrypt-deploy (%s). Uncomment to pin.\n# CERT_NAME=%s\n' "$how" "$chosen" >>"$op"
+	echo "bootstash: wrote commented CERT_NAME=$chosen in $op (runtime still decides)" >&2
+}
+
+sync_live() {
+	if [ -n "$chosen" ]; then
+		echo "bootstash: CERT_NAME=$chosen ($how)" >&2
+	fi
+	copied=0
+	if [ -d "$live" ]; then
+		for d in "$live"/*; do
+			[ -d "$d" ] || continue
+			if deploy_lineage "$d"; then
+				copied=$((copied + 1))
+			fi
+		done
+	fi
+	if [ "$copied" -gt 0 ]; then
+		persist_cert_name
+		return 0
+	fi
+	echo "bootstash: no live/ lineage to copy (hostname -f=${fqdn:-unset} CERT_NAME=${cert_name:-unset} PUBLIC_ORIGIN host=${origin:-unset})" >&2
+	avail=$(list_live | tr '\n' ' ')
+	if [ -n "$avail" ]; then
+		echo "bootstash: live/ has: $avail" >&2
+		echo "bootstash: set CERT_NAME=<lineage> in $op (several lineages; will not guess)" >&2
+	elif [ ! -d "$live" ]; then
+		echo "bootstash: no $live" >&2
+	else
+		echo "bootstash: no lineages in $live" >&2
+	fi
+}
+
+if [ "${1:-}" = sync ]; then
+	sync_live
+	maybe_reload
+	exit 0
+fi
+
+lineage=${RENEWED_LINEAGE:-}
+[ -n "$lineage" ] || exit 0
+if deploy_lineage "$lineage"; then
+	persist_cert_name
+	maybe_reload
+fi

@@ -1,21 +1,44 @@
 .TH BOOTSTASH-PROVISION-GOOGLE 8 "September 2026" "bootstash" "System Administration"
 .SH NAME
-bootstash-provision-google \- write Google OIDC client keys into /etc/bootstash/oidc-google
+bootstash-provision-google \- write Google OIDC client keys into /etc/bootstash/oidc-google.json
 .SH SYNOPSIS
 .B bootstash provision-google
 [\fB\-config\fR \fIpath\fR]
 [\fB\-secrets\fR \fIpath\fR]
 [\fB\-origin\fR \fIurl\fR]
 [\fB\-project\fR \fIid\fR]
+[\fB\-json\fR \fIpath\fR]
 .SH DESCRIPTION
-Prints the exact OIDC redirect URI
+Prints a four-step Google console recipe (project, branding,
+Web application client, download JSON) with a recommended value
+at each step, including the exact OIDC redirect URI
 .RB ( $PUBLIC_ORIGIN/oidc/callback )
-and Google Auth Platform console URLs, then writes the Client ID and
-Client secret you paste to
-.IR /etc/bootstash/oidc-google
+from the loaded config. It says whether that URI is
+.B https
+(PEMs found; BIND port stays) or
+.B http
+(no certs yet), and that finding certs does not move
+.B BIND
+to 443.
+Then copies the downloaded Web application client JSON
+.RB ( \-json
+or a prompted path) to
+.IR /etc/bootstash/oidc-google.json
 (mode
 .BR 0640 ,
 .BR root:bootstash ).
+That file is the console
+.B Download JSON
+object
+.RB ( web.client_id
+/
+.BR web.client_secret ).
+Desktop
+.RB ( installed )
+JSON is rejected.
+Run as root (or
+.BR sudo )
+so that write succeeds. It does not write TLS certs.
 It does not edit
 .IR /etc/default/bootstash .
 .PP
@@ -25,7 +48,12 @@ create the Google OAuth web client.
 .B gcloud
 has no supported command for that client type. Consent / branding is
 once per GCP project. One web client per
-.BR PUBLIC_ORIGIN .
+.B PUBLIC_ORIGIN
+(operator file,
+.BR \-origin ,
+or the
+.B hostname \-f
+default).
 If
 .B gcloud
 is on
@@ -42,7 +70,7 @@ from. Default:
 .TP
 .BI \-secrets " path"
 File to write. Default:
-.IR /etc/bootstash/oidc-google .
+.IR /etc/bootstash/oidc-google.json .
 .TP
 .BI \-origin " url"
 .B PUBLIC_ORIGIN
@@ -53,6 +81,12 @@ if it is not already in
 GCP project id for console URLs when
 .B gcloud
 has none.
+.TP
+.BI \-json " path"
+Downloaded Web application client JSON to install.
+Use
+.B \-
+to read stdin.
 .SH SEE ALSO
 .BR bootstash (8),
 .BR bootstash (5)

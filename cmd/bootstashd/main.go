@@ -27,7 +27,7 @@ func main() {
 	configureLog()
 	syscall.Umask(0o007)
 
-	defaultsPath := flag.String("defaults", config.DefaultDefaultsPath, "packaged defaults file")
+	defaultsPath := flag.String("defaults", config.DefaultDistPath, "dist defaults file")
 	configPath := flag.String("config", config.DefaultConfigPath, "operator config file")
 	secretsPath := flag.String("secrets", config.DefaultSecretsPath, "OIDC client secrets file")
 	showVersion := flag.Bool("version", false, "print version and exit")

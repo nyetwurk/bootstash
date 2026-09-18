@@ -1,1 +1,19 @@
-# See bootstash(5). Add only overrides.
+# See bootstash(5) and /usr/share/doc/bootstash/QUICKSTART.md
+# Add only overrides. Commented values match /usr/lib/bootstash/default-dist
+# or are unset (derived at runtime). OIDC: bootstash provision-google
+# (installs the downloaded Google client JSON as
+# /etc/bootstash/oidc-google.json, not this file).
+#
+# DATA=/var/lib/bootstash
+# PAM_SERVICE=bootstashd
+# BIND=127.0.0.1:8080
+# MAX_UPLOAD=33554432
+# SHARED_WRITABLE=0
+# UNIX_GROUP=bootstash
+#
+# Not in default-dist (derived unless set):
+# PUBLIC_ORIGIN=
+# CERT_NAME=
+# TLS_CERT=
+# TLS_KEY=
+# ADMIN_USERS=

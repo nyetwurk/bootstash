@@ -29,14 +29,21 @@ override_dh_auto_install:
 	install -d debian/bootstash/etc/pam.d
 	install -m 0644 contrib/pam.d/bootstashd debian/bootstash/etc/pam.d/bootstashd
 	install -d debian/bootstash/usr/lib/bootstash
-	install -m 0644 internal/config/defaults.conf debian/bootstash/usr/lib/bootstash/defaults.conf
+	install -m 0644 internal/config/default-dist debian/bootstash/usr/lib/bootstash/default-dist
+	install -m 0644 debian/bootstash.default debian/bootstash/usr/lib/bootstash/default
+	install -m 0755 contrib/letsencrypt-deploy debian/bootstash/usr/lib/bootstash/letsencrypt-deploy
+	install -d debian/bootstash/etc/letsencrypt/renewal-hooks/deploy
+	ln -s /usr/lib/bootstash/letsencrypt-deploy debian/bootstash/etc/letsencrypt/renewal-hooks/deploy/bootstash
 	install -d debian/bootstash/usr/share/doc/bootstash/examples
 	install -m 0644 contrib/config.example debian/bootstash/usr/share/doc/bootstash/examples/config.example
 	install -m 0644 contrib/nginx-location.conf debian/bootstash/usr/share/doc/bootstash/examples/nginx-location.conf
 	install -m 0644 contrib/apache-location.conf debian/bootstash/usr/share/doc/bootstash/examples/apache-location.conf
 
+# Do not enable. Do not stop on upgrade (that would leave the
+# unit down). Start/try-restart is in postinst after cert sync,
+# and only when the daemon can actually run.
 override_dh_installsystemd:
-	dh_installsystemd --no-enable --no-start
+	dh_installsystemd --no-enable --no-start --no-stop-on-upgrade
 
 # dh_auto_clean prefers `make distclean`, which deletes debian/changelog.
 override_dh_auto_clean:

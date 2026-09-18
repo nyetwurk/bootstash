@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,11 +23,12 @@ func runProvision(args []string) int {
 	secretsFile := fs.String("secrets", config.DefaultSecretsPath, "OIDC client secrets file to write")
 	origin := fs.String("origin", "", "PUBLIC_ORIGIN (default: read from operator config)")
 	project := fs.String("project", "", "GCP project id for console URLs")
+	jsonPath := fs.String("json", "", "downloaded Google Web application client JSON")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
-	cfg, err := config.Load(config.DefaultDefaultsPath, *cfgFile, *secretsFile)
+	cfg, err := config.Load(config.DefaultDistPath, *cfgFile, *secretsFile)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -36,55 +38,114 @@ func runProvision(args []string) int {
 		pub = cfg.PublicOrigin
 	}
 	if pub == "" {
-		fmt.Fprintln(os.Stderr, "PUBLIC_ORIGIN is not set; pass -origin or add it to", *cfgFile)
+		fmt.Fprintln(os.Stderr, "PUBLIC_ORIGIN is not set; pass -origin, add it to", *cfgFile, ", or give hostname -f a usable name")
 		return 1
 	}
 	pub = strings.TrimRight(pub, "/")
 	redirect := pub + "/oidc/callback"
-	fmt.Println("Redirect URI (paste into the Google web client):")
-	fmt.Println(" ", redirect)
-	fmt.Println()
-
 	proj := *project
 	if proj == "" {
 		proj = gcloudValue("config", "get-value", "project")
 	}
-	q := ""
-	if proj != "" {
-		q = "?project=" + proj
-		fmt.Println("gcloud project:", proj)
-	} else {
-		fmt.Println("gcloud not logged in or no project; pass -project ID.")
-		fmt.Println("If needed: gcloud auth login")
-	}
-	fmt.Println()
-	fmt.Println("Google Auth Platform (branding, once per project):")
-	fmt.Println("  https://console.cloud.google.com/auth/branding" + q)
-	fmt.Println("Create a Web application OAuth client:")
-	fmt.Println("  https://console.cloud.google.com/auth/clients" + q)
-	fmt.Println("Authorized redirect URI must be exactly the URI above.")
-	fmt.Println()
+	printGoogleSetup(os.Stdout, googleSetup{
+		Pub:       pub,
+		Redirect:  redirect,
+		Proj:      proj,
+		TLS:       cfg.TLSCert != "" && cfg.TLSKey != "",
+		CertName:  cfg.CertName,
+		Binds:     cfg.Binds,
+		OriginSet: *origin != "",
+	})
 
-	in := bufio.NewReader(os.Stdin)
-	id, err := prompt(in, "Client ID: ")
-	if err != nil {
+	src := *jsonPath
+	if src == "" {
+		in := bufio.NewReader(os.Stdin)
+		p, err := prompt(in, "Path to downloaded client JSON: ")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		src = p
+	}
+	if src == "" {
+		fmt.Fprintln(os.Stderr, "no client JSON path; pass -json or download the Web application JSON")
+		return 1
+	}
+	if err := installGoogleClientJSON(src, *secretsFile, cfg.UnixGroup); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	secret, err := prompt(in, "Client secret: ")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	if err := writeSecretsFile(*secretsFile, map[string]string{
-		"OIDC_GOOGLE_CLIENT_ID":     id,
-		"OIDC_GOOGLE_CLIENT_SECRET": secret,
-	}, cfg.UnixGroup); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	fmt.Println("Wrote client id/secret to", *secretsFile)
+	fmt.Println("Installed Google client JSON at", *secretsFile)
 	return 0
+}
+
+type googleSetup struct {
+	Pub       string
+	Redirect  string
+	Proj      string
+	TLS       bool
+	CertName  string
+	Binds     []string
+	OriginSet bool
+}
+
+func printGoogleSetup(w io.Writer, s googleSetup) {
+	q := ""
+	if s.Proj != "" {
+		q = "?project=" + s.Proj
+	}
+
+	fmt.Fprintln(w, "1. GCP project (once)")
+	fmt.Fprintln(w, "   https://console.cloud.google.com/cloud-resource-manager"+q)
+	fmt.Fprintln(w, "   Recommend: display name bootstash. Project id bootstash if free;")
+	fmt.Fprintln(w, "   otherwise bootstash-<tag>. One project is enough. Not the hostname.")
+	if s.Proj != "" {
+		fmt.Fprintln(w, "   Current gcloud project:", s.Proj)
+	} else {
+		fmt.Fprintln(w, "   No gcloud project; pass -project ID or: gcloud auth login")
+	}
+	fmt.Fprintln(w)
+
+	fmt.Fprintln(w, "2. Branding / consent screen (once per project)")
+	fmt.Fprintln(w, "   https://console.cloud.google.com/auth/branding"+q)
+	fmt.Fprintln(w, "   Recommend: External. Testing. App name bootstash. Support email = you.")
+	fmt.Fprintln(w, "   Add your Google account as a test user. Skip verification unless any")
+	fmt.Fprintln(w, "   Google account must work.")
+	fmt.Fprintln(w)
+
+	fmt.Fprintln(w, "3. OAuth client (one per PUBLIC_ORIGIN)")
+	fmt.Fprintln(w, "   https://console.cloud.google.com/auth/clients"+q)
+	fmt.Fprintln(w, "   Recommend: type Web application. Name can be bootstash or the host.")
+	fmt.Fprintln(w, "   Authorized redirect URI (exact, $PUBLIC_ORIGIN/oidc/callback):")
+	fmt.Fprintln(w, "    ", s.Redirect)
+	fmt.Fprintln(w, "   Paste that character-for-character. Leave other client fields empty.")
+	fmt.Fprintln(w, "   Authorized JavaScript origins: leave empty, or")
+	fmt.Fprintln(w, "    ", s.Pub)
+	fmt.Fprintln(w, "   with no path.")
+	if s.OriginSet {
+		fmt.Fprintln(w, "   PUBLIC_ORIGIN came from -origin.")
+	} else if s.TLS {
+		fmt.Fprintln(w, "   HTTPS: PEMs found under /etc/bootstash/certs (TCP binds already")
+		fmt.Fprintln(w, "   speak HTTPS). Finding certs does not change BIND or move the port")
+		fmt.Fprintln(w, "   to 443. The port in the URI is BIND ("+strings.Join(s.Binds, ", ")+").")
+		if s.CertName != "" {
+			fmt.Fprintln(w, "   CERT_NAME="+s.CertName)
+		}
+		fmt.Fprintln(w, "   Phone on default HTTPS: set BIND (e.g. *:443) and run this again.")
+	} else {
+		fmt.Fprintln(w, "   HTTP: no PEMs in /etc/bootstash/certs. Do not invent https://.")
+		fmt.Fprintln(w, "   To use HTTPS: CERT_NAME=<lineage> in /etc/default/bootstash, then")
+		fmt.Fprintln(w, "   sudo /usr/lib/bootstash/letsencrypt-deploy sync, then run this again.")
+		fmt.Fprintln(w, "   Do not point TLS_* at /etc/letsencrypt/live.")
+	}
+	fmt.Fprintln(w)
+
+	fmt.Fprintln(w, "4. Download the client JSON from the console (Download JSON). That file")
+	fmt.Fprintln(w, "   has web.client_id and web.client_secret. Not your Google account.")
+	fmt.Fprintln(w, "   This command copies it to /etc/bootstash/oidc-google.json (needs root).")
+	fmt.Fprintln(w, "   It does not write TLS certs and does not create the Google client")
+	fmt.Fprintln(w, "   (gcloud has no API for that type).")
+	fmt.Fprintln(w)
 }
 
 func prompt(in *bufio.Reader, label string) (string, error) {
@@ -113,52 +174,26 @@ func gcloudValue(args ...string) string {
 	return v
 }
 
-var secretKeyOrder = []string{
-	"OIDC_GOOGLE_CLIENT_ID",
-	"OIDC_GOOGLE_CLIENT_SECRET",
-}
-
-func writeSecretsFile(path string, keys map[string]string, group string) error {
-	var lines []string
-	if b, err := os.ReadFile(path); err == nil {
-		lines = strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
-		if len(lines) == 1 && lines[0] == "" {
-			lines = nil
-		}
-	} else if !os.IsNotExist(err) {
+func installGoogleClientJSON(src, dest, group string) error {
+	var b []byte
+	var err error
+	if src == "-" {
+		b, err = io.ReadAll(os.Stdin)
+	} else {
+		b, err = os.ReadFile(src)
+	}
+	if err != nil {
 		return err
 	}
-	if len(lines) == 0 {
-		lines = []string{
-			"# Written by bootstash provision-google. Operator keys belong in /etc/default/bootstash.",
-		}
+	_, secret, err := config.ParseGoogleClientJSON(b)
+	if err != nil {
+		return err
 	}
-	seen := map[string]bool{}
-	var out []string
-	for _, line := range lines {
-		trim := strings.TrimSpace(line)
-		if trim == "" || strings.HasPrefix(trim, "#") || !strings.Contains(trim, "=") {
-			out = append(out, line)
-			continue
-		}
-		k, _, _ := strings.Cut(trim, "=")
-		k = strings.TrimSpace(k)
-		if v, ok := keys[k]; ok {
-			out = append(out, k+"="+v)
-			seen[k] = true
-			continue
-		}
-		out = append(out, line)
+	if secret == "" {
+		return fmt.Errorf("Google client JSON: missing web.client_secret")
 	}
-	for _, k := range secretKeyOrder {
-		v, ok := keys[k]
-		if !ok || seen[k] {
-			continue
-		}
-		out = append(out, k+"="+v)
-	}
-	dir := filepath.Dir(path)
-	_, err := os.Stat(dir)
+	dir := filepath.Dir(dest)
+	_, err = os.Stat(dir)
 	created := os.IsNotExist(err)
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return err
@@ -169,21 +204,21 @@ func writeSecretsFile(path string, keys map[string]string, group string) error {
 		}
 		_ = chownGroup(dir, group)
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(strings.Join(out, "\n")+"\n"), 0640); err != nil {
+	tmp := dest + ".tmp"
+	if err := os.WriteFile(tmp, b, 0640); err != nil {
 		return err
 	}
 	if err := os.Chmod(tmp, 0640); err != nil {
 		return err
 	}
 	_ = chownGroup(tmp, group)
-	if err := os.Rename(tmp, path); err != nil {
+	if err := os.Rename(tmp, dest); err != nil {
 		return err
 	}
-	if err := os.Chmod(path, 0640); err != nil {
+	if err := os.Chmod(dest, 0640); err != nil {
 		return err
 	}
-	_ = chownGroup(path, group)
+	_ = chownGroup(dest, group)
 	return nil
 }
 

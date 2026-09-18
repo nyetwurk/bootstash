@@ -88,7 +88,9 @@ sudo systemctl enable --now bootstash
 `/etc/default/bootstash`. It prints recommended values for the
 project, branding screen, and Web application client, plus the
 redirect URI from the loaded config (`https` if PEMs exist; BIND
-port stays).
+port stays). After you download the client JSON from the console,
+it copies that file to `/etc/bootstash/oidc-google.json` (`-json` or a
+prompted path).
 
 Interface binds retry if the NIC is late. `systemctl reload` is
 SIGHUP (certs, operator file, secrets, CIDR/interface binds). Logs
