@@ -72,12 +72,21 @@ Format:
 .B KEY=value
 lines,
 .B #
-comments, no shell expansion. Mode
-.BR 0640 ,
-owner
-.BR root:bootstash
-so the daemon user can read them. The daemon reads these files itself;
-do not use systemd
+comments, no shell expansion.
+.I /etc/default/bootstash
+and
+.I /usr/lib/bootstash/default-dist
+are
+.BR 0644
+.BR root:root
+(same as other
+.I /etc/default
+files).
+.I /etc/bootstash/oidc-google.json
+is
+.BR 0640
+.BR root:bootstash .
+The daemon reads these files itself; do not use systemd
 .BR EnvironmentFile= .
 .SH KEYS
 .TP
@@ -294,6 +303,11 @@ admin seam). Default empty: nobody. SIGHUP re-reads the list. v1
 grants no extra HTTP powers; later admin routes will use this list.
 Not a Unix group and not an application user table.
 .SH FILES
+.TP
+.I /etc/default/bootstash
+Operator overrides
+.RB ( 0644
+.BR root:root ).
 .TP
 .I /etc/bootstash
 Directory for helper-written secrets and copied TLS files

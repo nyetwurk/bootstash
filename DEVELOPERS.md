@@ -43,7 +43,8 @@ README “Expectations.”
 Load order: built-in (embed of `internal/config/default-dist`) /
 `/usr/lib/bootstash/default-dist` (not a
 conffile; **every** key, including empty/derived), then
-`/etc/default/bootstash` (conffile; commented `DATA`, `BIND`,
+`/etc/default/bootstash` (conffile; `0644` `root:root` like other
+`/etc/default` files; commented `DATA`, `BIND`,
 `PUBLIC_URL`, `ADMIN_USERS`; operator diffs), then
 `/etc/bootstash/oidc-google.json` (helper-written; not a
 conffile). Later scalars win. If the operator file mentions `BIND` at
