@@ -17,7 +17,9 @@ README “Expectations.”
   rename exported types freely; nobody should import this module
 - Public **Debian `.deb`**. How to build it: [`BUILDING.md`](BUILDING.md)
 - One process UID (`bootstash`). HTTP isolation is a path jail
-  (`openat`), not `setfsuid`. Do not serve `$HOME` as the PAM uid
+  (`openat`), not `setfsuid`. Do not serve `$HOME` as the PAM uid.
+  `POST /link` is the setuid helper (Auth). Do not set
+  `NoNewPrivileges=`
 - File API: GET (Range/206), PUT/POST upload, DELETE of own files and
   **empty** directories. No rename, no WebDAV
 - Identity is `(issuer, sub)`, never email-as-path. v1 requires PAM
@@ -72,7 +74,9 @@ alias. Operators do not cron the hook.
 `bootstashd` is `/usr/sbin/bootstashd`. CLI is `/usr/sbin/bootstash`
 (no PAM, no HTTP). systemd: `Type=notify`, `User=bootstash`,
 `SupplementaryGroups=ssl-cert`, `AmbientCapabilities` for bind /
-`SO_BINDTODEVICE` / `CAP_CHOWN`. umask `007`. Startup log: version,
+`SO_BINDTODEVICE` / `CAP_CHOWN` / `CAP_FSETID` / `CAP_FOWNER`
+(`chown` otherwise drops cubby setgid). Do not set `NoNewPrivileges=` (the
+PAM helper is setuid). umask `007`. Startup log: version,
 origin, binds, admins if set — never client secrets. Package
 configure never enables the unit and never stops it on upgrade.
 After cert sync it `try-restart`s if already active, or starts if
@@ -101,11 +105,19 @@ rejected. Unix sockets are HTTP only.
 
 ## Data and jail
 
-`$DATA` (default `/var/lib/bootstash`):
+`$DATA` (default `/var/lib/bootstash`, `0751` so the cubby owner
+can traverse in):
 
 - `shared/` — linked users, HTTP read-only unless `SHARED_WRITABLE`
 - `users/<pam_user>/` — that PAM user; HTTP read/write. `2770`
-  `alice:bootstash` when `CAP_CHOWN` works
+  `alice:bootstash` when `CAP_CHOWN` works (`CAP_FSETID` so `chown`
+  does not drop setgid; `CAP_FOWNER` so `chmod` after `chown`
+  still works). Parent `users/` is `0711`
+  so alice can copy in from a shell without listing other cubbies.
+  Ordinary `cp` (not `cp -a`) so setgid group is `bootstash`.
+  Do not `chown` to `bootstash`. Start/SIGHUP and each `/home`
+  GET/HEAD also `chgrp` files on that path (and listing children)
+  and set `0640`. Full-tree pass is start/SIGHUP only.
 - `state/` — sessions, OIDC→PAM map, crypto key. `0700`, never HTTP
 
 Every file `open`/`create`/`unlink` is `openat` from the jail root.
@@ -122,11 +134,22 @@ HTML is a few templates, phone-sized targets, packaged `:root` +
 ## Auth
 
 OIDC first (Google issuer `https://accounts.google.com`). Then PAM
-`POST /link` (`pam_authenticate` + `pam_acct_mgmt`, service
-`bootstashd`). Link table: `(issuer, sub) → pam_user`. One subject maps
+`POST /link`. The daemon (`User=bootstash`) does not call PAM in
+process. It execs `/usr/lib/bootstash/pam` (setuid `4750`
+`root:bootstash`, not on `PATH`): argv is service + username,
+password on stdin, exit 0/1. The helper runs `pam_authenticate` +
+`pam_acct_mgmt` for service `bootstashd` (`/etc/pam.d/bootstashd` is
+`common-auth` + `common-account`, same as ssh). That is how
+`pam_unix` works for a user other than `bootstash`. Do not put the
+password on argv. Do not make the helper a daemon. Do not add an
+operator man page (not a user command). `-pam-helper` overrides the
+path for tests. If the binary is missing, the daemon falls back to
+in-process PAM (dev only; `pam_unix` will fail unless root).
+
+Link table: `(issuer, sub) → pam_user`. One subject maps
 to at most one PAM user; one PAM user may have several subjects.
 
-The helper prints the four-step recipe and
+`bootstash provision-google` prints the four-step recipe and
 `$PUBLIC_URL/oidc/callback`, then installs the downloaded
 client JSON. It does **not** create the Google web client
 (`gcloud` cannot). It does not create Unix users.
@@ -134,4 +157,4 @@ client JSON. It does **not** create the Google web client
 ## Tests that matter
 
 Jail, Alice/Bob, CSRF, oversize, shared write-off, unlinked cannot
-read trees, Range, bad PAM, DELETE.
+read trees, Range, bad PAM, DELETE, cubby `0711`/`2770`/`0640`.

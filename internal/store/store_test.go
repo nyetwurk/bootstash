@@ -28,6 +28,10 @@ func TestSessionAndLink(t *testing.T) {
 	if err != nil || !ok || pam != "alice" {
 		t.Fatalf("%s %v %v", pam, ok, err)
 	}
+	users, err := st.LinkedPAMUsers()
+	if err != nil || len(users) != 1 || users[0] != "alice" {
+		t.Fatalf("%v %v", users, err)
+	}
 	sess.PAMUser = "alice"
 	if err := st.SaveSession(sess); err != nil {
 		t.Fatal(err)

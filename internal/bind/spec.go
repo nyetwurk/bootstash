@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/nyet/bootstash/internal/osutil"
 	"golang.org/x/sys/unix"
 )
 
@@ -309,13 +310,13 @@ func Listen(t Target, unixGroup string) (net.Listener, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := os.Chmod(t.Address, 0660); err != nil {
+		if err := osutil.Chmod(t.Address, 0660); err != nil {
 			ln.Close()
 			return nil, err
 		}
 		if unixGroup != "" {
 			if g, err := lookupGID(unixGroup); err == nil {
-				_ = os.Chown(t.Address, -1, g)
+				_ = osutil.Chown(t.Address, -1, g)
 			}
 		}
 		return ln, nil

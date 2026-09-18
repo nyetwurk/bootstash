@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/nyet/bootstash/internal/osutil"
 )
 
 // Session is a server-side login.
@@ -48,7 +50,7 @@ func Open(dataDir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
-	if err := os.Chmod(dir, 0700); err != nil {
+	if err := osutil.Chmod(dir, 0700); err != nil {
 		return nil, err
 	}
 	return &Store{dir: dir}, nil
@@ -151,6 +153,29 @@ func (s *Store) LookupLink(iss, sub string) (string, bool, error) {
 		}
 	}
 	return "", false, nil
+}
+
+// LinkedPAMUsers returns distinct PAM names from the link table.
+func (s *Store) LinkedPAMUsers() ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	lf, err := s.readLinks()
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]struct{})
+	var out []string
+	for _, l := range lf.Links {
+		if l.PAMUser == "" {
+			continue
+		}
+		if _, ok := seen[l.PAMUser]; ok {
+			continue
+		}
+		seen[l.PAMUser] = struct{}{}
+		out = append(out, l.PAMUser)
+	}
+	return out, nil
 }
 
 // SetLink stores (iss,sub) -> pamUser. The subject maps to at most one user.

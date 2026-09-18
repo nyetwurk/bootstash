@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 
+	"github.com/nyet/bootstash/internal/osutil"
 	"golang.org/x/sys/unix"
 )
 
@@ -68,7 +70,15 @@ func (r *Root) Create(rel string, perm os.FileMode) (*os.File, error) {
 		return nil, err
 	}
 	f := os.NewFile(uintptr(fd), rel)
-	_ = f.Chmod(perm)
+	from := os.FileMode(0)
+	if st, err := f.Stat(); err == nil {
+		from = st.Mode()
+	}
+	if err := f.Chmod(perm); err != nil {
+		f.Close()
+		return nil, err
+	}
+	osutil.NoteChmod(r.path(rel), from, perm)
 	return f, nil
 }
 
@@ -87,7 +97,17 @@ func (r *Root) Mkdir(rel string, perm os.FileMode) error {
 		return err
 	}
 	defer unix.Close(fd)
-	return unix.Fchmod(fd, uint32(perm))
+	var st unix.Stat_t
+	from := uint32(0)
+	if err := unix.Fstat(fd, &st); err == nil {
+		from = st.Mode & 0o7777
+	}
+	to := osutil.UnixBits(perm)
+	if err := unix.Fchmod(fd, to); err != nil {
+		return err
+	}
+	osutil.NoteUnixChmod(r.path(rel), from, to)
+	return nil
 }
 
 // Remove unlinks a file or empty directory inside the jail. It does not
@@ -133,7 +153,31 @@ func (r *Root) Chown(rel string, uid, gid int) error {
 		return err
 	}
 	defer f.Close()
-	return f.Chown(uid, gid)
+	fu, fg := -1, -1
+	if st, err := f.Stat(); err == nil {
+		if u, g, ok := osutil.FileIDs(st); ok {
+			fu, fg = u, g
+		}
+	}
+	if err := f.Chown(uid, gid); err != nil {
+		return err
+	}
+	tu, tg := uid, gid
+	if uid < 0 {
+		tu = fu
+	}
+	if gid < 0 {
+		tg = fg
+	}
+	osutil.NoteChown(r.path(rel), fu, fg, tu, tg)
+	return nil
+}
+
+func (r *Root) path(rel string) string {
+	if r.name == "" {
+		return rel
+	}
+	return filepath.Join(r.name, filepath.FromSlash(rel))
 }
 
 func (r *Root) resolve(rel string, flags int, mode uint32) (int, error) {

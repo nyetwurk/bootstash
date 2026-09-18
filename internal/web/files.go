@@ -35,6 +35,9 @@ func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request, home bool) 
 		return
 	}
 	rel := strings.TrimPrefix(r.URL.Path, prefix+"/")
+	if home && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+		s.prepareCubbyRead(sess.PAMUser, rel)
+	}
 	rootPath, err := s.jailPath(home, sess)
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)

@@ -75,9 +75,13 @@ One data volume (you choose the path):
 - `shared/` — any signed-in, linked user
 - `users/<linux-username>/` — only that PAM user
 
-The daemon runs as one service account so it can read those trees. Other
-Linux logins cannot walk into your `users/...` directory. HTTP also refuses
-paths outside your folder and `shared/`.
+The daemon runs as one service account so it can read those trees. The
+cubby owner can drop files into `users/<their-name>/` from a login
+(`$DATA` is `0751`; parent `users/` is `0711`; the cubby is `2770`
+`you:bootstash`). Ordinary `cp` (not `cp -a`). Do not `chown` to
+`bootstash`. Opening `/home` (or start/SIGHUP) sets group `bootstash`
+and `0640`. Other Linux logins cannot enter your cubby. HTTP also
+refuses paths outside your folder and `shared/`.
 
 ## What this is not
 

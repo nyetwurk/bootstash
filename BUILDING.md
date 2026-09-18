@@ -8,7 +8,8 @@ releases: [`RELEASE.md`](RELEASE.md).
 ## Make targets
 
 ```
-make          # bin/bootstashd (PAM) and bin/bootstash (CGO_ENABLED=0)
+make          # bin/bootstashd (PAM), bin/bootstash-pam (setuid helper),
+              # and bin/bootstash (CGO_ENABLED=0)
 make test
 make copyright  # refresh Go module list in debian/copyright
 make packages   # all shipped archives (today: make deb)

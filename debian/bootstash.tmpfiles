@@ -1,6 +1,6 @@
-d /var/lib/bootstash 0750 root bootstash -
+d /var/lib/bootstash 0751 bootstash bootstash -
 d /var/lib/bootstash/shared 0750 root bootstash -
-d /var/lib/bootstash/users 0750 root bootstash -
+d /var/lib/bootstash/users 0711 bootstash bootstash -
 d /var/lib/bootstash/state 0700 bootstash bootstash -
 d /etc/bootstash 0750 root bootstash -
 d /etc/bootstash/certs 0750 root bootstash -

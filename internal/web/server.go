@@ -24,6 +24,7 @@ import (
 	"github.com/nyet/bootstash/internal/bind"
 	"github.com/nyet/bootstash/internal/config"
 	"github.com/nyet/bootstash/internal/oidcgoogle"
+	"github.com/nyet/bootstash/internal/osutil"
 	"github.com/nyet/bootstash/internal/pamauth"
 	"github.com/nyet/bootstash/internal/store"
 )
@@ -55,6 +56,7 @@ func New(cfg *config.Config, st *store.Store, idp IDP, pam pamauth.Authenticator
 	s := &Server{store: st, idp: idp, pam: pam, key: key}
 	s.cfg.Store(cfg)
 	s.manager = bind.NewManager(s, cfg.UnixGroup, s.certificate)
+	s.fixCubbies()
 	return s, nil
 }
 
@@ -77,6 +79,7 @@ func (s *Server) certificate() (*tls.Certificate, error) {
 // SetConfig replaces the runtime config (SIGHUP after a successful parse).
 func (s *Server) SetConfig(cfg *config.Config) {
 	s.cfg.Store(cfg)
+	s.fixCubbies()
 }
 
 // LoadCertificate reads cert and key from disk. On failure the previous cert is kept.
@@ -116,7 +119,13 @@ func ensureLayout(data string) error {
 	if err := os.MkdirAll(filepath.Join(data, "shared"), 0750); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Join(data, "users"), 0750); err != nil {
+	users := filepath.Join(data, "users")
+	if err := os.MkdirAll(users, 0711); err != nil {
+		return err
+	}
+	// umask 007 would strip o+x from MkdirAll; the cubby owner must
+	// be able to traverse users/ without listing it.
+	if err := osutil.Chmod(users, 0711); err != nil {
 		return err
 	}
 	return os.MkdirAll(filepath.Join(data, "state"), 0700)

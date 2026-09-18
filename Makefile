@@ -14,7 +14,7 @@ ifeq ($(filter $(PKG_OUT),packages ..),)
 $(error PKG_OUT must be 'packages' or '..')
 endif
 
-all: $(BINDIR)/bootstashd $(BINDIR)/bootstash
+all: $(BINDIR)/bootstashd $(BINDIR)/bootstash $(BINDIR)/bootstash-pam
 
 $(BINDIR):
 	mkdir -p $(BINDIR)
@@ -24,6 +24,9 @@ $(BINDIR)/bootstashd: FORCE | $(BINDIR)
 
 $(BINDIR)/bootstash: FORCE | $(BINDIR)
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $@ ./cmd/bootstash
+
+$(BINDIR)/bootstash-pam: FORCE | $(BINDIR)
+	go build -trimpath -ldflags "$(LDFLAGS)" -o $@ ./cmd/bootstash-pam
 
 test:
 	go test ./...

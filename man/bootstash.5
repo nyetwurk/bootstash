@@ -159,7 +159,25 @@ Not an ACME client.
 .TP
 .B DATA
 Data volume. Default
-.IR /var/lib/bootstash .
+.IR /var/lib/bootstash
+.RB ( 0751
+so a cubby owner can traverse in).
+.I users/
+is
+.B 0711
+so a linked Unix user can copy into
+.IR users/<name>/
+.RB ( 2770
+.IR name:bootstash )
+without listing other cubbies.
+Start, SIGHUP, and
+.B /home
+GET/HEAD set cubby files to group
+.B bootstash
+and
+.BR 0640 .
+See
+.BR bootstashd (8).
 .TP
 .B OIDC_GOOGLE_CLIENT_ID / OIDC_GOOGLE_CLIENT_SECRET
 Google web OAuth client. Client ID is required to start.
@@ -188,7 +206,12 @@ PAM service name. Default
 .BR bootstashd
 (file
 .IR /etc/pam.d/bootstashd ).
-The
+.B bootstashd
+does not call PAM as
+.BR bootstash :
+it execs
+.IR /usr/lib/bootstash/pam
+(setuid root). The
 .B bootstash
 CLI does not use PAM.
 .TP

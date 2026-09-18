@@ -12,8 +12,9 @@ ExecStart=/usr/sbin/bootstashd
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 StateDirectory=bootstash
+StateDirectoryMode=0751
 RuntimeDirectory=bootstash
-AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_RAW CAP_CHOWN
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_RAW CAP_CHOWN CAP_FSETID CAP_FOWNER
 
 [Install]
 WantedBy=multi-user.target

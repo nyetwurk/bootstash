@@ -47,10 +47,8 @@ func (m mapPAM) Authenticate(username, password string) error {
 	return pamauth.ErrDenied
 }
 
-func testServer(t *testing.T) (*Server, *store.Store, string) {
-	t.Helper()
-	dir := t.TempDir()
-	cfg := &config.Config{
+func testConfig(dir string) *config.Config {
+	return &config.Config{
 		PublicURL:          "https://stash.test",
 		Binds:              []string{"127.0.0.1:0"},
 		Data:               dir,
@@ -60,16 +58,128 @@ func testServer(t *testing.T) (*Server, *store.Store, string) {
 		MaxUpload:          64,
 		UnixGroup:          "bootstash",
 	}
+}
+
+func newTestServer(t *testing.T, dir string, pam mapPAM) (*Server, *store.Store) {
+	t.Helper()
+	if pam == nil {
+		pam = mapPAM{"alice": "secret"}
+	}
 	st, err := OpenStore(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	key := bytes.Repeat([]byte("k"), 32)
-	s, err := New(cfg, st, fakeIDP{}, mapPAM{"alice": "secret"}, key)
+	s, err := New(testConfig(dir), st, fakeIDP{}, pam, bytes.Repeat([]byte("k"), 32))
 	if err != nil {
 		t.Fatal(err)
 	}
+	return s, st
+}
+
+func testServer(t *testing.T) (*Server, *store.Store, string) {
+	t.Helper()
+	dir := t.TempDir()
+	s, st := newTestServer(t, dir, nil)
 	return s, st, dir
+}
+
+func TestUsersDirTraversable(t *testing.T) {
+	_, _, dir := testServer(t)
+	st, err := os.Stat(filepath.Join(dir, "users"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := st.Mode().Perm(); got != 0711 {
+		t.Fatalf("users mode %04o", got)
+	}
+}
+
+func TestFixCubbiesSetsSetgidOnStart(t *testing.T) {
+	dir := t.TempDir()
+	cubby := filepath.Join(dir, "users", "alice")
+	if err := os.MkdirAll(cubby, 0770); err != nil {
+		t.Fatal(err)
+	}
+	newTestServer(t, dir, nil)
+	info, err := os.Stat(cubby)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSetgid == 0 {
+		t.Fatalf("cubby mode %s", info.Mode())
+	}
+}
+
+func TestFixCubbiesGroupReadNotOther(t *testing.T) {
+	dir := t.TempDir()
+	cubby := filepath.Join(dir, "users", "alice")
+	if err := os.MkdirAll(cubby, 0770); err != nil {
+		t.Fatal(err)
+	}
+	odd := filepath.Join(cubby, "only-other.txt")
+	ok644 := filepath.Join(cubby, "world.txt")
+	priv := filepath.Join(cubby, "private.txt")
+	if err := os.WriteFile(odd, []byte("x"), 0604); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(odd, 0604); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ok644, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(ok644, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(priv, []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(priv, 0600); err != nil {
+		t.Fatal(err)
+	}
+	newTestServer(t, dir, nil)
+	got := func(p string) os.FileMode {
+		t.Helper()
+		info, err := os.Stat(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return info.Mode().Perm()
+	}
+	if g := got(odd); g != 0640 {
+		t.Fatalf("odd %04o", g)
+	}
+	if g := got(ok644); g != 0640 {
+		t.Fatalf("0644 became %04o", g)
+	}
+	if g := got(priv); g != 0640 {
+		t.Fatalf("0600 became %04o", g)
+	}
+}
+
+func TestHomeGetFixesCopiedFile(t *testing.T) {
+	s, st, dir := testServer(t)
+	c := linkedSession(t, s, st, "alice")
+	p := filepath.Join(dir, "users", "alice", "copied.bin")
+	if err := os.WriteFile(p, []byte("stash"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(p, 0600); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/home/copied.bin", nil)
+	req.AddCookie(c)
+	rr := do(s, req)
+	if rr.Code != http.StatusOK || rr.Body.String() != "stash" {
+		t.Fatalf("get: %d %s", rr.Code, rr.Body.String())
+	}
+	info, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0640 {
+		t.Fatalf("after get %04o", info.Mode().Perm())
+	}
 }
 
 func OpenStore(dir string) (*store.Store, error) {
@@ -314,6 +424,13 @@ func TestGoodPAMLinksCurrentUser(t *testing.T) {
 	pam, ok, err := st.LookupLink(sess.Iss, sess.Sub)
 	if err != nil || !ok || pam != u.Username {
 		t.Fatalf("pam=%s ok=%v err=%v", pam, ok, err)
+	}
+	stt, err := os.Stat(filepath.Join(s.config().Data, "users", u.Username))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stt.Mode()&os.ModeSetgid == 0 || stt.Mode().Perm() != 0770 {
+		t.Fatalf("cubby mode %s", stt.Mode())
 	}
 }
 

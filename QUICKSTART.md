@@ -94,6 +94,16 @@ port stays). After you download the client JSON from the console,
 it copies that file to `/etc/bootstash/oidc-google.json` (`-json` or a
 prompted path).
 
+After link, that Unix user can `cp` into
+`/var/lib/bootstash/users/<name>/`. Keep ownership as yourself;
+the setgid cubby (`2770` you:`bootstash`) sets group `bootstash` on
+new files so the daemon can read them. Use ordinary `cp`, not
+`cp -a` (that can keep another group). Opening a file under `/home`
+(or start/SIGHUP) `chgrp`s to `bootstash` and sets `0640` (so
+`0644`/`0600` copies work). Do not `chown` them to `bootstash` and
+do not add yourself to that group. Other logins cannot list `users/`
+or enter someone else’s cubby.
+
 Interface binds retry if the NIC is late. `systemctl reload` is
 SIGHUP (certs, operator file, secrets, CIDR/interface binds). Logs
 go to the journal.

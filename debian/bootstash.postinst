@@ -5,6 +5,14 @@ set -e
 
 #DEBHELPER#
 
+# unix_chkpwd only checks the calling user. This helper is setuid root
+# so POST /link can use pam_unix like ssh. 4750 root:bootstash: the
+# daemon may exec it; others may not. Not on PATH.
+if [ -f /usr/lib/bootstash/pam ]; then
+	chown root:bootstash /usr/lib/bootstash/pam
+	chmod 4750 /usr/lib/bootstash/pam
+fi
+
 op=/etc/default/bootstash
 secrets=/etc/bootstash/oidc-google.json
 

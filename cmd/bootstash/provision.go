@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/nyet/bootstash/internal/config"
+	"github.com/nyet/bootstash/internal/osutil"
 	"github.com/nyet/bootstash/internal/pamauth"
 )
 
@@ -199,7 +200,7 @@ func installGoogleClientJSON(src, dest, group string) error {
 		return err
 	}
 	if created || dir == filepath.Dir(config.DefaultSecretsPath) {
-		if err := os.Chmod(dir, 0750); err != nil {
+		if err := osutil.Chmod(dir, 0750); err != nil {
 			return err
 		}
 		_ = chownGroup(dir, group)
@@ -208,14 +209,14 @@ func installGoogleClientJSON(src, dest, group string) error {
 	if err := os.WriteFile(tmp, b, 0640); err != nil {
 		return err
 	}
-	if err := os.Chmod(tmp, 0640); err != nil {
+	if err := osutil.Chmod(tmp, 0640); err != nil {
 		return err
 	}
 	_ = chownGroup(tmp, group)
 	if err := os.Rename(tmp, dest); err != nil {
 		return err
 	}
-	if err := os.Chmod(dest, 0640); err != nil {
+	if err := osutil.Chmod(dest, 0640); err != nil {
 		return err
 	}
 	_ = chownGroup(dest, group)
@@ -230,5 +231,5 @@ func chownGroup(path, group string) error {
 	if err != nil {
 		return err
 	}
-	return os.Chown(path, -1, gid)
+	return osutil.Chown(path, -1, gid)
 }

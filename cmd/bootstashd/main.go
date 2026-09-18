@@ -34,6 +34,7 @@ func main() {
 	flag.BoolVar(showVersion, "V", false, "print version and exit")
 	check := flag.Bool("t", false, "check configuration and exit")
 	flag.BoolVar(check, "check-config", false, "check configuration and exit")
+	pamHelper := flag.String("pam-helper", pamauth.DefaultHelperPath, "setuid PAM helper")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(version.Version)
@@ -61,7 +62,7 @@ func main() {
 		ClientID:     cfg.GoogleClientID,
 		ClientSecret: cfg.GoogleClientSecret,
 	}
-	srv, err := web.New(cfg, st, idp, pamauth.PAM{Service: cfg.PAMService}, key)
+	srv, err := web.New(cfg, st, idp, pamauth.New(cfg.PAMService, *pamHelper), key)
 	if err != nil {
 		log.Fatal(err)
 	}

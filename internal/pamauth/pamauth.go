@@ -12,6 +12,9 @@ import (
 	"unicode"
 )
 
+// DefaultService is the packaged PAM stack (/etc/pam.d/bootstashd).
+const DefaultService = "bootstashd"
+
 // ErrDenied is a failed username/password check.
 var ErrDenied = errors.New("pam authentication failed")
 
@@ -27,11 +30,26 @@ type Account struct {
 	GID  int
 }
 
+// ValidService is a PAM service name (file under /etc/pam.d/).
+func ValidService(name string) bool {
+	if name == "" {
+		return true
+	}
+	if len(name) > 64 {
+		return false
+	}
+	return validASCIIToken(name)
+}
+
 // ValidUsername is a single path component safe to use under $DATA/users/.
 func ValidUsername(name string) bool {
 	if name == "" || name == "." || name == ".." {
 		return false
 	}
+	return validASCIIToken(name)
+}
+
+func validASCIIToken(name string) bool {
 	if strings.ContainsAny(name, "/\\:\x00") {
 		return false
 	}
@@ -39,8 +57,9 @@ func ValidUsername(name string) bool {
 		if r > unicode.MaxASCII {
 			return false
 		}
-		ok := unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-' || r == '.'
-		if !ok {
+		switch {
+		case unicode.IsLetter(r), unicode.IsDigit(r), r == '_', r == '-', r == '.':
+		default:
 			return false
 		}
 	}

@@ -9,6 +9,7 @@ bootstashd \- convenience cubby for bootstrap files
 [\fB\-defaults\fR \fIpath\fR]
 [\fB\-config\fR \fIpath\fR]
 [\fB\-secrets\fR \fIpath\fR]
+[\fB\-pam\-helper\fR \fIpath\fR]
 .SH DESCRIPTION
 .B bootstashd
 is the bootstash daemon. After Google OpenID Connect and a one-time PAM
@@ -34,6 +35,15 @@ port, and
 .B OIDC_GOOGLE_CLIENT_ID
 is set (usually the Google client JSON in
 .IR /etc/bootstash/oidc-google.json ).
+.PP
+PAM for
+.B POST /link
+is a setuid helper
+.I /usr/lib/bootstash/pam
+(not on
+.BR PATH ).
+Operators do not run it. Do not set systemd
+.B NoNewPrivileges= .
 .SH OPTIONS
 .TP
 .BR \-V ", " \-\-version
@@ -56,13 +66,22 @@ Operator config. Default:
 .BI \-secrets " path"
 OIDC client secrets. Default:
 .IR /etc/bootstash/oidc-google.json .
+.TP
+.BI \-pam\-helper " path"
+Setuid PAM helper. Default:
+.IR /usr/lib/bootstash/pam .
+Not an operator tool.
 .SH SIGNALS
 .TP
 .B SIGHUP
 Re-read dist defaults, operator config, and the secrets file
 (keep the last good config on parse failure),
 reload TLS certificate and key from disk (keep the previous cert on
-failure), and re-sync CIDR/interface listeners without dropping unrelated
+failure), reapply cubby
+.B 2770
+and file
+.BR 0640 ,
+and re-sync CIDR/interface listeners without dropping unrelated
 listeners. systemd
 .B reload
 sends this.
@@ -81,6 +100,16 @@ after config is loaded, including while waiting for a missing interface).
 .I /usr/lib/bootstash/default-dist
 Dist defaults (not a conffile).
 .TP
+.I /usr/lib/bootstash/pam
+Setuid PAM helper
+.RB ( 4750
+.BR root:bootstash
+after configure). The
+daemon execs it for
+.BR /link .
+Not on
+.BR PATH .
+.TP
 .I /etc/default/bootstash
 Operator config; commented
 .BR DATA ,
@@ -97,11 +126,49 @@ Google OIDC client id/secret. Written by
 Not a conffile.
 .TP
 .I /var/lib/bootstash
-Default data volume:
+Default data volume
+.RB ( 0751 )
+so a cubby owner can traverse in:
 .IR shared/ ,
 .IR users/<pam_user>/
 .RB ( 2770
-.IR alice:bootstash ),
+.IR alice:bootstash ).
+Parent
+.I users/
+is
+.B 0711
+so that user can copy files in from a shell without listing other
+cubbies.
+Ordinary
+.B cp
+(not
+.BR "cp \-a" )
+picks up group
+.B bootstash
+from setgid.
+Do not
+.B chown
+to
+.BR bootstash .
+Start and SIGHUP reapply
+.B 2770
+on existing cubbies and linked names.
+Each
+.B /home
+GET or HEAD also fixes that path and, for a listing, its
+immediate children.
+Regular cubby files are
+.B chgrp
+to
+.B bootstash
+with
+.B g+r
+and no other bits
+.RB ( 0644 / 0600
+become
+.BR 0640 ).
+Mode and owner/group changes are logged
+.RB ( chmod / chown ).
 .IR state/
 .RB ( 0700 ,
 not served).

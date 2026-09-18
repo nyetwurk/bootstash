@@ -17,6 +17,7 @@ VERSION_LDFLAGS = -X github.com/nyet/bootstash/internal/version.Version=$(GIT_VE
 override_dh_auto_build:
 	mkdir -p bin
 	CGO_ENABLED=1 go build -buildmode=pie -trimpath -ldflags="-s -w $(VERSION_LDFLAGS)" -o bin/bootstashd ./cmd/bootstashd
+	CGO_ENABLED=1 go build -buildmode=pie -trimpath -ldflags="-s -w $(VERSION_LDFLAGS)" -o bin/bootstash-pam ./cmd/bootstash-pam
 	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w $(VERSION_LDFLAGS)" -o bin/bootstash ./cmd/bootstash
 
 override_dh_auto_test:
@@ -29,6 +30,7 @@ override_dh_auto_install:
 	install -d debian/bootstash/etc/pam.d
 	install -m 0644 contrib/pam.d/bootstashd debian/bootstash/etc/pam.d/bootstashd
 	install -d debian/bootstash/usr/lib/bootstash
+	install -m 0755 bin/bootstash-pam debian/bootstash/usr/lib/bootstash/pam
 	install -m 0644 internal/config/default-dist debian/bootstash/usr/lib/bootstash/default-dist
 	install -m 0644 debian/bootstash.default debian/bootstash/usr/lib/bootstash/default
 	install -m 0755 contrib/letsencrypt-deploy debian/bootstash/usr/lib/bootstash/letsencrypt-deploy
