@@ -134,7 +134,7 @@ func printGoogleSetup(w io.Writer, s googleSetup) {
 		if s.CertName != "" {
 			fmt.Fprintln(w, "   CERT_NAME="+s.CertName)
 		}
-		fmt.Fprintln(w, "   Phone on default HTTPS: set BIND (e.g. *:443) and run this again.")
+		fmt.Fprintln(w, "   Browser on default HTTPS: set BIND (e.g. *:443) and run this again.")
 	} else if s.TLSOff {
 		fmt.Fprintln(w, "   HTTP: TLS=no. TCP binds stay cleartext. The deploy hook does")
 		fmt.Fprintln(w, "   not copy live/ into /etc/bootstash/certs and removes dest PEMs")

@@ -76,7 +76,7 @@ print_next() {
 		need=1
 	fi
 	if ! has_key "$op" BIND; then
-		echo "bootstash: BIND is still 127.0.0.1:8080. Set BIND in $op if a phone must reach you." >&2
+		echo "bootstash: BIND is still 127.0.0.1:8080. Set BIND in $op if another host must reach you." >&2
 		need=1
 	fi
 	tls0=

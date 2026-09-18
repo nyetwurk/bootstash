@@ -2,8 +2,8 @@
 
 A small daemon that is a **self-hosted cubby for bootstrap files**: after
 you prove you are an existing Linux user, you **browse, download, and
-upload** your own tree — keys, profiles, first-run artifacts — in a
-phone browser.
+upload** your own tree — keys, profiles, first-run artifacts — from
+whatever browser you have on the road.
 
 It is not a secrets engine (no unseal, leases, or KV API). Bind wherever
 you want (loopback, LAN, a tunnel NIC, later a public address). v1 auth
@@ -23,7 +23,7 @@ hostile-tenant environments.
 - One service UID can read every tree it serves. HTTP isolation is a
   **path jail**, not per-request `setfsuid`
 - Google (and later other IdPs) and a session cookie are “good enough
-  for a phone on the LAN,” not an HSM or policy engine
+  for a laptop on the LAN,” not an HSM or policy engine
 - A bug or stolen cookie is a bad day for those files. Keep crown jewels
   in OpenBao, `age`/`SOPS`, or not on this host
 - Kits are **temporary**. Expiration (not v1) will delete aged HTTP
@@ -35,9 +35,10 @@ must not yield plaintext,” this is the wrong program.
 
 ## Who it is for
 
-Debian hosts that already have **PAM accounts**. Typical session: reach
-the daemon → Google sign-in → (once) Linux username + password →
-download bootstrap files. Packaged `TLS=auto` uses Let’s Encrypt
+Debian hosts that already have **PAM accounts**. The user is a **road
+warrior**: laptop, tablet, or phone away from the usual shell. Typical
+session: reach the daemon → Google sign-in → (once) Linux username +
+password → download bootstrap files. Packaged `TLS=auto` uses Let’s Encrypt
 files on disk (copied into `/etc/bootstash/certs/`) when both PEMs
 exist. `TLS=no` is cleartext (no dest copy; dest PEMs removed; a
 reverse proxy may terminate HTTPS). See
@@ -49,7 +50,8 @@ reverse proxy may terminate HTTPS). See
 - Link that sign-in to your existing Linux account (the same one ssh
   already uses). Username + password, once
 - Browse **your** folder that other people cannot see
-- Download files, including large ones (phones can play or save them)
+- Download files, including large ones (Range so a browser can play or
+  save them)
 - Upload into **your** folder
 - Delete files (and empty folders) in **your** folder
 - Later: **expiration** of HTTP-uploaded kit files so the tree does not

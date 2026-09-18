@@ -26,10 +26,10 @@ certs unless `TLS=no`).
 
 ## Listen and origin
 
-Packaged bind is `127.0.0.1:8080`. Set `BIND` before a phone can
+Packaged bind is `127.0.0.1:8080`. Set `BIND` before another host can
 reach you (interface, CIDR, address, `*`, or `unix://`).
 
-`PUBLIC_URL` is the URL the **phone’s browser** uses for the OIDC
+`PUBLIC_URL` is the URL the **browser** uses for the OIDC
 callback (Google never connects to you). When unset it is
 `CERT_NAME` (see TLS) plus the first listen port, else
 `hostname -f`. Packaged `TLS=auto`: `https` if cert and key are

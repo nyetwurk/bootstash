@@ -95,7 +95,7 @@ First install without OIDC stays down.
 Do not rewrite the request from `X-Forwarded-Proto` /
 `X-Forwarded-Host`. Browser origin is `PUBLIC_URL` (OIDC, CSRF,
 cookies). A reverse proxy must set `PUBLIC_URL` to the URL the
-phone uses; `Host` on the backend socket does not matter.
+browser uses; `Host` on the backend socket does not matter.
 
 ## Bind
 
@@ -138,8 +138,9 @@ New HTTP files `0660`, dirs `0770`.
 
 Routes: `/login`, `/oidc/callback`, `/link`, `/unlink`, `/home/`.
 Unlinked sessions only reach login, callback, and `/link`.
-HTML is a few templates, phone-sized targets, packaged `:root` +
-`prefers-color-scheme`. No SPA, no theme picker.
+HTML is a few templates, large targets (laptop, tablet, or phone),
+packaged `:root` + `prefers-color-scheme`. No SPA, no second desktop
+UI, no theme picker.
 
 ## Auth
 
