@@ -167,8 +167,17 @@ Parent
 .I users/
 is
 .B 0711
-so that user can copy files in from a shell without listing other
-cubbies.
+so that user can
+.B bootstash put
+(or copy with
+.BR cp )
+from a shell without listing other cubbies.
+.B bootstash put
+must run as the cubby owner, not root; files are
+.B 0660
+and new directories
+.B 2770
+(same as the cubby).
 Ordinary
 .B cp
 (not

@@ -37,6 +37,8 @@ func main() {
 		os.Exit(runLinks(os.Args[2:]))
 	case "unlink":
 		os.Exit(runUnlink(os.Args[2:]))
+	case "put":
+		os.Exit(runPut(os.Args[2:]))
 	case "help", "-h", "-help", "--help":
 		usage()
 	default:
@@ -95,5 +97,6 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "  provision-google   print Google OIDC recipe and install the downloaded client JSON\n")
 	fmt.Fprintf(os.Stderr, "  links              list OIDC→PAM maps (needs read of $DATA/state)\n")
 	fmt.Fprintf(os.Stderr, "  unlink             drop OIDC→PAM links for a Unix user (needs write to $DATA/state)\n")
+	fmt.Fprintf(os.Stderr, "  put                copy files or directories into your cubby (not root)\n")
 	fmt.Fprintf(os.Stderr, "  version            print git describe version\n")
 }

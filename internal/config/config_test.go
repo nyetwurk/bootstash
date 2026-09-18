@@ -311,6 +311,39 @@ func TestAdminUsers(t *testing.T) {
 	}
 }
 
+func TestLoadOperatorSkipsSecrets(t *testing.T) {
+	dir := t.TempDir()
+	def := filepath.Join(dir, "default-dist")
+	op := filepath.Join(dir, "config")
+	sec := filepath.Join(dir, "oidc-google.json")
+	if err := os.WriteFile(def, []byte("LISTEN=127.0.0.1:8080\nDATA=/tmp/data\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(op, []byte("DATA=/var/lib/bootstash\nPUBLIC_URL=https://stash.test\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sec, []byte(`{"web":{"client_id":"hidden","client_secret":"sekrit"}}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(def, op, sec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.GoogleClientID != "hidden" {
+		t.Fatalf("Load id %q", loaded.GoogleClientID)
+	}
+	cfg, err := LoadOperator(def, op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Data != "/var/lib/bootstash" {
+		t.Fatalf("data %q", cfg.Data)
+	}
+	if cfg.GoogleClientID != "" {
+		t.Fatalf("must not read secrets, got %q", cfg.GoogleClientID)
+	}
+}
+
 func TestLoadSecretsOverridesOIDCIgnoresLISTEN(t *testing.T) {
 	dir := t.TempDir()
 	def := filepath.Join(dir, "default-dist")

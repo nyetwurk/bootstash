@@ -1,6 +1,6 @@
 .TH BOOTSTASH 8 "September 2026" "bootstash" "System Administration"
 .SH NAME
-bootstash \- operator tools for bootstashd
+bootstash \- CLI for bootstashd
 .SH SYNOPSIS
 .B bootstash
 \fBcheck-config\fR
@@ -30,11 +30,29 @@ bootstash \- operator tools for bootstashd
 .I user
 .PP
 .B bootstash
+\fBput\fR
+[\fB\-defaults\fR \fIpath\fR]
+[\fB\-config\fR \fIpath\fR]
+[\fB\-t\fR \fIdir\fR]
+\fIsource\fR...
+[\fIdest\fR]
+.PP
+.B bootstash
 [\fB\-\-version\fR]
 .SH DESCRIPTION
 .B bootstash
-is the operator CLI for the bootstash daemon. It does not serve HTTP or
+is the CLI for the bootstash daemon. It does not serve HTTP or
 call PAM.
+.B check-config ,
+.B provision-google ,
+.B links ,
+and
+.B unlink
+are operator commands (usually
+.BR sudo ).
+.B put
+copies into the caller’s cubby and must run as that Unix user, not
+root.
 .SH COMMANDS
 .TP
 .B check-config
@@ -155,6 +173,49 @@ State files stay owned as
 .I $DATA/state
 (not root) so the daemon can still read them.
 .TP
+.B put
+Copy files or directories into the caller’s cubby
+.RI ( $DATA/users/<unix-name>/ ).
+Run as that Unix user, not
+.B root
+(not
+.BR sudo ).
+UID 0 is refused.
+The cubby must already exist (sign in and
+.B POST /link
+first); this command does not create it.
+Does not read OIDC secrets.
+Destination is relative to the cubby, or an absolute path under it.
+One
+.I source
+copies to the cubby root keeping the basename.
+Several arguments: last is
+.I dest
+(like
+.BR cp ).
+.B \-t
+.I dir
+puts every source into that cubby directory (created if missing).
+Directories are copied recursively.
+Regular files become
+.B 0660
+(same as HTTP upload) and new directories
+.B 2770
+(same as the cubby) so setgid group
+.B bootstash
+applies.
+Does not copy symlinks.
+Does not
+.B chown
+to
+.BR bootstash .
+Overwrites existing files (atomic replace, like HTTP PUT).
+Prints each cubby-relative file path on success.
+Paths stay inside the cubby
+.RB ( openat );
+.B ..
+is rejected.
+.TP
 .B version
 Print the version from
 .B git describe
@@ -170,8 +231,9 @@ Dist defaults. Default:
 Used by
 .BR check-config ,
 .BR links ,
+.BR unlink ,
 and
-.BR unlink .
+.BR put .
 .TP
 .BI \-config " path"
 Operator config. Default:
@@ -182,9 +244,10 @@ OIDC client secrets file. Default:
 .IR /etc/bootstash/oidc-google.json .
 .B provision-google
 writes it;
-.B links
+.B links ,
+.B unlink ,
 and
-.B unlink
+.B put
 do not use OIDC keys.
 .TP
 .BI \-origin " url"
@@ -206,6 +269,11 @@ Downloaded Web application client JSON for
 Use
 .B \-
 to read stdin.
+.TP
+.BI \-t " dir"
+Destination directory in the cubby for
+.BR put .
+Created if missing.
 .SH SEE ALSO
 .BR bootstashd (8),
 .BR bootstash (5),

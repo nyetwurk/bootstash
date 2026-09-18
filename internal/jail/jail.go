@@ -123,32 +123,18 @@ func (r *Root) Replace(rel string, perm os.FileMode, body io.Reader) error {
 	return nil
 }
 
-// Mkdir creates a directory relative to the jail.
+// Mkdir creates a directory relative to the jail. It does not fchmod.
+// Linux chmod by a process that is not in the directory's group and
+// lacks CAP_FSETID silently drops S_ISGID (cubby is alice:bootstash;
+// alice is not in bootstash). mkdirat in a setgid parent already
+// inherits group and setgid; leave that in place.
 func (r *Root) Mkdir(rel string, perm os.FileMode) error {
 	dir, name, err := r.parentOf(rel)
 	if err != nil {
 		return err
 	}
 	defer unix.Close(dir)
-	if err := unix.Mkdirat(dir, name, uint32(perm&0777)); err != nil {
-		return err
-	}
-	fd, err := unix.Openat(dir, name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-	if err != nil {
-		return err
-	}
-	defer unix.Close(fd)
-	var st unix.Stat_t
-	from := uint32(0)
-	if err := unix.Fstat(fd, &st); err == nil {
-		from = st.Mode & 0o7777
-	}
-	to := osutil.UnixBits(perm)
-	if err := unix.Fchmod(fd, to); err != nil {
-		return err
-	}
-	osutil.NoteUnixChmod(r.path(rel), from, to)
-	return nil
+	return unix.Mkdirat(dir, name, uint32(perm&0777))
 }
 
 // Remove unlinks a file or empty directory inside the jail. It does not

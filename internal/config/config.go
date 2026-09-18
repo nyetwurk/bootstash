@@ -78,7 +78,24 @@ func Load(defaultsPath, configPath, secretsPath string) (*Config, error) {
 	defaultsPath = orDefault(defaultsPath, DefaultDistPath)
 	configPath = orDefault(configPath, DefaultConfigPath)
 	secretsPath = orDefault(secretsPath, DefaultSecretsPath)
+	return load(defaultsPath, configPath, secretsPath)
+}
 
+// LoadOperator merges built-ins, dist defaults, and the operator
+// file. It does not read the secrets file. User commands that only
+// need DATA use this so they can run without OIDC keys.
+func LoadOperator(defaultsPath, configPath string) (*Config, error) {
+	defaultsPath = orDefault(defaultsPath, DefaultDistPath)
+	configPath = orDefault(configPath, DefaultConfigPath)
+	cfg, err := load(defaultsPath, configPath, "")
+	if err != nil {
+		return nil, err
+	}
+	cfg.SecretsPath = DefaultSecretsPath
+	return cfg, nil
+}
+
+func load(defaultsPath, configPath, secretsPath string) (*Config, error) {
 	merged := builtinMap()
 	for _, path := range []string{defaultsPath, configPath} {
 		m, err := parseFile(path)
@@ -87,11 +104,13 @@ func Load(defaultsPath, configPath, secretsPath string) (*Config, error) {
 		}
 		mergeInto(merged, m)
 	}
-	sec, err := parseSecrets(secretsPath)
-	if err != nil {
-		return nil, err
+	if secretsPath != "" {
+		sec, err := parseSecrets(secretsPath)
+		if err != nil {
+			return nil, err
+		}
+		mergeScalars(merged, sec)
 	}
-	mergeScalars(merged, sec)
 
 	cfg := &Config{
 		DefaultsPath: defaultsPath,

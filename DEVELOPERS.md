@@ -79,7 +79,8 @@ alias. Operators do not cron the hook.
 ## Process
 
 `bootstashd` is `/usr/sbin/bootstashd`. CLI is `/usr/sbin/bootstash`
-(no PAM, no HTTP; `links` / `unlink` use `$DATA/state`). systemd: `Type=notify`, `User=bootstash`,
+(no PAM, no HTTP; `put` copies into the caller’s cubby without OIDC
+secrets; `links` / `unlink` use `$DATA/state`). systemd: `Type=notify`, `User=bootstash`,
 `SupplementaryGroups=ssl-cert`, `AmbientCapabilities` for bind /
 `SO_BINDTODEVICE` / `CAP_CHOWN` / `CAP_FSETID` / `CAP_FOWNER`
 (`chown` otherwise drops cubby setgid). Do not set `NoNewPrivileges=` (the
@@ -124,7 +125,9 @@ can traverse in):
   does not drop setgid; `CAP_FOWNER` so `chmod` after `chown`
   still works). Parent `users/` is `0711`
   so alice can copy in from a shell without listing other cubbies.
-  Ordinary `cp` (not `cp -a`) so setgid group is `bootstash`.
+  `bootstash put` is that copy (files `0660`, dirs `2770`, no
+  symlinks, not root). Ordinary `cp` (not `cp -a`) so setgid group
+  is `bootstash`.
   Do not `chown` to `bootstash`. Start/SIGHUP and each `/home`
   GET/HEAD also `chgrp` files on that path (and listing children)
   and set `0640`, using `openat`/`O_NOFOLLOW`/`fchmod`/`fchown`
@@ -141,7 +144,10 @@ directory is 409. Do not serve `state/`. CSRF (`Origin`, `Sec-Fetch-Site`, or
 `Referer` vs `PUBLIC_URL`) on every state-changing request.
 `Referrer-Policy` is `same-origin` so same-origin form POST still has
 a Referer when Origin is missing (Sign out, upload, mkdir).
-New HTTP files `0660`, dirs `0770`. PUT/POST write a sibling temp
+New HTTP files `0660`, dirs mkdirat `0770` (inherit setgid in a
+cubby → `2770`). Do not fchmod cubby dirs: chmod(2) drops
+`S_ISGID` when the caller is not in the directory’s group (alice
+is not in `bootstash`) and lacks `CAP_FSETID`. PUT/POST write a sibling temp
 then `renameat` so a failed upload keeps the old file.
 
 Routes: `/login`, `/oidc/callback`, `/link`, `/logout`, `/home/`.
@@ -196,9 +202,14 @@ PAM name and clears `pam_user` on those sessions. The cubby stays.
 Changing or disabling the Unix account does not drop the map.
 Not an `ADMIN_USERS` HTTP power.
 
+`bootstash put` copies files or directories into the caller’s cubby.
+Not sudo. UID 0 is refused. Does not create the cubby. Does not read
+OIDC secrets. Files `0660` (HTTP upload), dirs `2770` (cubby).
+
 ## Tests that matter
 
 Jail, Alice/Bob, CSRF, oversize, unlinked cannot read trees, Range,
 bad PAM, UID 0, DELETE, cubby `0711`/`2770`/`0640`, `links` / `unlink` PAM map,
-`POST /logout` keeps the map, PKCE, session rotate on `/link`,
-relink drops other sessions, oauth login cap, response headers.
+`put` into the caller’s cubby, `POST /logout` keeps the map, PKCE,
+session rotate on `/link`, relink drops other sessions, oauth login
+cap, response headers.

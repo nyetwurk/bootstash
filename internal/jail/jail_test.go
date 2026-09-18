@@ -11,8 +11,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
+
+	"github.com/nyet/bootstash/internal/osutil"
 )
 
 func TestRejectDotDot(t *testing.T) {
@@ -166,6 +169,30 @@ func TestCreateAndMkdir(t *testing.T) {
 	f.Close()
 	if _, err := j.Create("../nope", 0660); err == nil {
 		t.Fatal("create escape")
+	}
+}
+
+func TestMkdirKeepsParentSetgid(t *testing.T) {
+	root := t.TempDir()
+	if err := syscall.Chmod(root, 0o2770); err != nil {
+		t.Fatal(err)
+	}
+	old := syscall.Umask(0)
+	t.Cleanup(func() { syscall.Umask(old) })
+	j, err := OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer j.Close()
+	if err := j.Mkdir("sub", 0770); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(filepath.Join(root, "sub"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if osutil.UnixBits(st.Mode()) != 0o2770 {
+		t.Fatalf("sub %04o want 2770", osutil.UnixBits(st.Mode()))
 	}
 }
 

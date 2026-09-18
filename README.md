@@ -57,6 +57,7 @@ Install is a **public `.deb`**.
 - Download files, including large ones (Range so a browser can play or
   save them)
 - Upload into **your** folder
+- From a host login: `bootstash put` files into **your** folder (not sudo)
 - Delete files (and empty folders) in **your** folder
 - Sign out (this browser session; the Linux link stays)
 - Later: **expiration** of HTTP-uploaded kit files so the tree does not
@@ -96,8 +97,9 @@ The daemon runs as one service account so it can read those trees.
 HTTP refuses paths outside your folder. Other Linux logins cannot
 enter your cubby.
 
-From a login you can drop files into `users/<your-name>/` with
-ordinary `cp` (not `cp -a`). Do not `chown` to `bootstash`.
+From a login, `bootstash put` copies into `users/<your-name>/` (not
+root). Ordinary `cp` (not `cp -a`) also works. Do not `chown` to
+`bootstash`.
 
 - `$DATA` is `0751` so you can traverse in
 - Parent `users/` is `0711` so you cannot list other cubbies
@@ -117,7 +119,7 @@ ordinary `cp` (not `cp -a`). Do not `chown` to `bootstash`.
 - Not a reason to auto-create Unix users
 
 Package: `bootstash`. Daemon: `bootstashd`. CLI: `bootstash`
-(`provision-google`, `links`, `unlink`). Changing the code:
+(`provision-google`, `links`, `unlink`, `put`). Changing the code:
 [`DEVELOPERS.md`](DEVELOPERS.md). Building: [`BUILDING.md`](BUILDING.md).
 
 ## Known issues
