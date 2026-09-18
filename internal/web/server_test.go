@@ -469,6 +469,9 @@ func TestGoodPAMLinksCurrentUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if u.Uid == "0" {
+		t.Skip("uid 0 cannot link")
+	}
 	s, st, _ := testServer(t)
 	s.pam = mapPAM{u.Username: "pw"}
 	sess, err := st.CreateSession("https://accounts.google.com", "sub-me", u.Username+"@x", time.Hour)
@@ -494,6 +497,38 @@ func TestGoodPAMLinksCurrentUser(t *testing.T) {
 	}
 	if stt.Mode()&os.ModeSetgid == 0 || stt.Mode().Perm() != 0770 {
 		t.Fatalf("cubby mode %s", stt.Mode())
+	}
+}
+
+func TestUID0DoesNotLink(t *testing.T) {
+	root, err := user.LookupId("0")
+	if err != nil {
+		t.Skip(err)
+	}
+	if !pamauth.ValidUsername(root.Username) {
+		t.Skip("root name")
+	}
+	s, st, dir := testServer(t)
+	s.pam = mapPAM{root.Username: "pw"}
+	sess, err := st.CreateSession("https://accounts.google.com", "sub-root", "root@x", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := "username=" + root.Username + "&password=pw"
+	req := httptest.NewRequest(http.MethodPost, "/link", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "https://stash.test")
+	req.AddCookie(&http.Cookie{Name: s.cookieName(), Value: sess.ID})
+	rr := do(s, req)
+	if rr.Code == http.StatusFound {
+		t.Fatal("linked uid 0")
+	}
+	_, ok, err := st.LookupLink(sess.Iss, sess.Sub)
+	if err != nil || ok {
+		t.Fatalf("link written ok=%v err=%v", ok, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "users", root.Username)); err == nil {
+		t.Fatal("created root cubby")
 	}
 }
 

@@ -34,6 +34,9 @@ func (h Helper) Authenticate(username, password string) error {
 	if !ValidService(svc) {
 		return ErrDenied
 	}
+	if acct, err := Lookup(username); err == nil && !Linkable(acct) {
+		return ErrDenied
+	}
 	path := h.Path
 	if path == "" {
 		path = DefaultHelperPath

@@ -165,6 +165,7 @@ in-process PAM (dev only; `pam_unix` will fail unless root).
 
 Link table: `(issuer, sub) → pam_user`. One subject maps
 to at most one PAM user; one PAM user may have several subjects.
+UID 0 is never linked (`POST /link` and the helper refuse it).
 
 `bootstash provision-google` prints the four-step recipe and
 `$PUBLIC_URL/oidc/callback`, then installs the downloaded
@@ -179,5 +180,5 @@ Not an `ADMIN_USERS` HTTP power.
 ## Tests that matter
 
 Jail, Alice/Bob, CSRF, oversize, unlinked cannot read trees, Range,
-bad PAM, DELETE, cubby `0711`/`2770`/`0640`, `links` / `unlink` PAM map,
+bad PAM, UID 0, DELETE, cubby `0711`/`2770`/`0640`, `links` / `unlink` PAM map,
 `POST /logout` keeps the map.

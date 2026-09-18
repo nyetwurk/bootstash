@@ -87,6 +87,11 @@ func Lookup(name string) (*Account, error) {
 	return &Account{Name: u.Username, UID: uid, GID: gid}, nil
 }
 
+// Linkable is whether this account may own a cubby. UID 0 is never linked.
+func Linkable(a *Account) bool {
+	return a != nil && a.UID != 0
+}
+
 // LookupGroupGID returns a group's numeric id.
 func LookupGroupGID(name string) (int, error) {
 	g, err := user.LookupGroup(name)

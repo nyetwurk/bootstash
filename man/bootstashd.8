@@ -55,6 +55,7 @@ is a setuid helper
 .I /usr/lib/bootstash/pam
 (not on
 .BR PATH ).
+UID 0 is never linked (the helper does not check that password).
 Operators do not run it. Do not set systemd
 .B NoNewPrivileges= .
 An operator drops that map with

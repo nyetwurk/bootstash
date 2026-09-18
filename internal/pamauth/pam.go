@@ -42,6 +42,9 @@ func Run(service, username, password string) error {
 	if !ValidUsername(username) || !ValidService(service) {
 		return ErrDenied
 	}
+	if acct, err := Lookup(username); err == nil && !Linkable(acct) {
+		return ErrDenied
+	}
 	svc := service
 	if svc == "" {
 		svc = DefaultService

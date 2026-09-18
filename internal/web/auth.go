@@ -110,9 +110,15 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
 			s.render(w, "link", sessionPage(sess, pageData{Title: "Link account", Error: "username or password not accepted", Hint: user}))
 			return
 		}
-		if _, err := pamauth.Lookup(user); err != nil {
+		acct, err := pamauth.Lookup(user)
+		if err != nil {
 			log.Printf("link unknown user=%s sub=%s from %s", user, sess.Sub, r.RemoteAddr)
 			s.render(w, "link", sessionPage(sess, pageData{Title: "Link account", Error: "unknown local user", Hint: user}))
+			return
+		}
+		if !pamauth.Linkable(acct) {
+			log.Printf("link denied pam=%s sub=%s from %s (uid 0)", user, sess.Sub, r.RemoteAddr)
+			s.render(w, "link", sessionPage(sess, pageData{Title: "Link account", Error: "username or password not accepted", Hint: user}))
 			return
 		}
 		if err := s.store.SetLink(sess.Iss, sess.Sub, user); err != nil {
@@ -210,10 +216,13 @@ func (s *Server) ensureUserDir(pamUser string) error {
 	if dir != users && !strings.HasPrefix(dir, users+string(filepath.Separator)) {
 		return os.ErrNotExist
 	}
+	acct, err := pamauth.Lookup(pamUser)
+	if err == nil && !pamauth.Linkable(acct) {
+		return pamauth.ErrDenied
+	}
 	if err := os.MkdirAll(dir, 0770); err != nil {
 		return err
 	}
-	acct, err := pamauth.Lookup(pamUser)
 	if err != nil {
 		return cubbyMode(users, dir)
 	}

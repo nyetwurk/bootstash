@@ -348,7 +348,7 @@ func (s *Server) serveDelete(w http.ResponseWriter, r *http.Request, root *jail.
 
 func (s *Server) chownRel(root *jail.Root, rel, pamUser string) {
 	acct, err := pamauth.Lookup(pamUser)
-	if err != nil {
+	if err != nil || !pamauth.Linkable(acct) {
 		return
 	}
 	gid := acct.GID
