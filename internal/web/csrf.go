@@ -9,22 +9,20 @@ import (
 )
 
 func (s *Server) checkCSRF(r *http.Request) bool {
-	cfg := s.config()
+	want := s.config().PublicURL
 	origin := strings.TrimRight(r.Header.Get("Origin"), "/")
-	if origin != "" {
-		return origin == cfg.PublicURL
+	if origin != "" && origin != "null" {
+		return origin == want
 	}
-	site := r.Header.Get("Sec-Fetch-Site")
-	switch site {
+	switch r.Header.Get("Sec-Fetch-Site") {
 	case "same-origin":
 		return true
-	case "none":
-		// User-initiated same-origin navigations may send none; still require
-		// the public origin as Referer when Origin is missing.
-		ref := r.Header.Get("Referer")
-		return strings.HasPrefix(ref, cfg.PublicURL+"/") || ref == cfg.PublicURL
-	default:
+	case "cross-site", "same-site":
 		return false
+	default:
+		// "" or "none": some browsers omit Origin on same-origin form POST.
+		ref := r.Header.Get("Referer")
+		return strings.HasPrefix(ref, want+"/") || ref == want
 	}
 }
 

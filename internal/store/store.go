@@ -279,7 +279,7 @@ func (s *Store) SetLink(iss, sub, pamUser string) error {
 }
 
 // SaveLinkedSession writes the link and session together so unlink cannot
-// leave a PAM session after dropping the map.
+// leave a PAM session after dropping the map. The session id is rotated.
 func (s *Store) SaveLinkedSession(sess *Session, pamUser string) error {
 	if sess == nil {
 		return os.ErrInvalid
@@ -288,8 +288,28 @@ func (s *Store) SaveLinkedSession(sess *Session, pamUser string) error {
 		if err := s.setLinkLocked(sess.Iss, sess.Sub, pamUser); err != nil {
 			return err
 		}
+		old := sess.ID
+		id, err := randomID()
+		if err != nil {
+			return err
+		}
+		sess.ID = id
 		sess.PAMUser = pamUser
-		return s.saveSession(sess)
+		if err := s.saveSession(sess); err != nil {
+			sess.ID = old
+			return err
+		}
+		if old == id {
+			return nil
+		}
+		path, ok := s.sessionPath(old)
+		if !ok {
+			return nil
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
 	})
 }
 

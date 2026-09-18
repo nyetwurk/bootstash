@@ -36,14 +36,15 @@ const sessionTTL = 7 * 24 * time.Hour
 const oauthTTL = 15 * time.Minute
 
 type oauthTx struct {
-	nonce string
-	exp   time.Time
+	nonce    string
+	verifier string
+	exp      time.Time
 }
 
 // IDP is the OIDC authorization-code provider (Google in v1).
 type IDP interface {
-	AuthCodeURL(ctx context.Context, state, nonce, redirectURL string) (string, error)
-	Exchange(ctx context.Context, code, nonce, redirectURL string) (*oidcgoogle.Identity, error)
+	AuthCodeURL(ctx context.Context, state, nonce, redirectURL string) (authURL, verifier string, err error)
+	Exchange(ctx context.Context, code, nonce, redirectURL, verifier string) (*oidcgoogle.Identity, error)
 }
 
 // Server is the HTTP handler plus listener manager.
@@ -139,7 +140,15 @@ func ensureLayout(data string) error {
 	return os.MkdirAll(filepath.Join(data, "state"), 0700)
 }
 
+func setSecurityHeaders(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Referrer-Policy", "same-origin")
+	h.Set("Content-Security-Policy", "frame-ancestors 'none'")
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	setSecurityHeaders(w)
 	switch {
 	case r.URL.Path == "/":
 		s.handleRoot(w, r)
@@ -285,27 +294,27 @@ func (s *Server) hostCookie(httpsName, httpName string) string {
 	return httpName
 }
 
-func (s *Server) putOauthTx(id, nonce string, exp time.Time) {
+func (s *Server) putOauthTx(id, nonce, verifier string, exp time.Time) {
 	s.oauthMu.Lock()
 	defer s.oauthMu.Unlock()
 	if s.oauthTx == nil {
 		s.oauthTx = make(map[string]oauthTx)
 	}
-	s.oauthTx[id] = oauthTx{nonce: nonce, exp: exp}
+	s.oauthTx[id] = oauthTx{nonce: nonce, verifier: verifier, exp: exp}
 }
 
-func (s *Server) takeOauthTx(id string) (string, error) {
+func (s *Server) takeOauthTx(id string) (nonce, verifier string, err error) {
 	s.oauthMu.Lock()
 	defer s.oauthMu.Unlock()
 	tx, ok := s.oauthTx[id]
 	if !ok {
-		return "", fmt.Errorf("no oauth tx")
+		return "", "", fmt.Errorf("no oauth tx")
 	}
 	delete(s.oauthTx, id)
 	if time.Now().After(tx.exp) {
-		return "", fmt.Errorf("oauth tx expired")
+		return "", "", fmt.Errorf("oauth tx expired")
 	}
-	return tx.nonce, nil
+	return tx.nonce, tx.verifier, nil
 }
 
 func (s *Server) redirectURI() string {

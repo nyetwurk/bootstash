@@ -122,7 +122,11 @@ func (s *Server) serveGet(w http.ResponseWriter, r *http.Request, root *jail.Roo
 		disp = "inline"
 	}
 	w.Header().Set("Content-Type", ctype)
-	w.Header().Set("Content-Disposition", disp+"; filename=\""+info.Name()+"\"")
+	cd := mime.FormatMediaType(disp, map[string]string{"filename": info.Name()})
+	if cd == "" {
+		cd = disp
+	}
+	w.Header().Set("Content-Disposition", cd)
 	if r.Method == http.MethodGet && wantsHTML(r) && disp == "attachment" {
 		s.setDownloadMark(w, rel)
 	}

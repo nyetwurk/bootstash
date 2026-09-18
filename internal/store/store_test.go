@@ -117,6 +117,68 @@ func TestUnlinkPAMDropsLinksAndSessions(t *testing.T) {
 	}
 }
 
+func TestGetSessionExpired(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := st.CreateSession("https://accounts.google.com", "sub-1", "a@b.c", -time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.GetSession(sess.ID); !os.IsNotExist(err) {
+		t.Fatalf("expired: %v", err)
+	}
+}
+
+func TestSaveLinkedSession(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	iss := "https://accounts.google.com"
+	sess, err := st.CreateSession(iss, "sub-1", "a@b.c", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveLinkedSession(sess, "alice"); err != nil {
+		t.Fatal(err)
+	}
+	pam, ok, err := st.LookupLink(iss, "sub-1")
+	if err != nil || !ok || pam != "alice" {
+		t.Fatalf("pam=%s ok=%v err=%v", pam, ok, err)
+	}
+	got, err := st.GetSession(sess.ID)
+	if err != nil || got.PAMUser != "alice" {
+		t.Fatalf("%+v %v", got, err)
+	}
+}
+
+func TestSaveLinkedSessionRotatesID(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := st.CreateSession("https://accounts.google.com", "sub-1", "a@b.c", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := sess.ID
+	if err := st.SaveLinkedSession(sess, "alice"); err != nil {
+		t.Fatal(err)
+	}
+	if sess.ID == old {
+		t.Fatal("session id unchanged")
+	}
+	if _, err := st.GetSession(old); !os.IsNotExist(err) {
+		t.Fatalf("old session: %v", err)
+	}
+	got, err := st.GetSession(sess.ID)
+	if err != nil || got.PAMUser != "alice" {
+		t.Fatalf("%+v %v", got, err)
+	}
+}
+
 func TestGetSessionRejectsUnsafeID(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {

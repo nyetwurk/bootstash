@@ -137,8 +137,10 @@ can traverse in):
 
 Every file `open`/`create`/`unlink` is `openat` from the jail root.
 Reject `..`, NUL, and outbound symlinks. DELETE of a non-empty
-directory is 409. Do not serve `state/`. CSRF (`Origin` or
-`Sec-Fetch-Site` vs `PUBLIC_URL`) on every state-changing request.
+directory is 409. Do not serve `state/`. CSRF (`Origin`, `Sec-Fetch-Site`, or
+`Referer` vs `PUBLIC_URL`) on every state-changing request.
+`Referrer-Policy` is `same-origin` so same-origin form POST still has
+a Referer when Origin is missing (Sign out, upload, mkdir).
 New HTTP files `0660`, dirs `0770`. PUT/POST write a sibling temp
 then `renameat` so a failed upload keeps the old file.
 
@@ -150,16 +152,23 @@ HTML **Sign out** is `POST /logout`: this session file and cookie only.
 The PAM map stays. Not unlink.
 HTML is a few templates, large targets (laptop, tablet, or phone),
 packaged `:root` + `prefers-color-scheme`. No SPA, no second desktop
-UI, no theme picker.
+UI, no theme picker. Every response sets `nosniff`,
+`Referrer-Policy: same-origin`, and
+`Content-Security-Policy: frame-ancestors 'none'` (inline `/link` and
+listing JS stay; do not add a strict `script-src` without a nonce).
+File GET uses `mime.FormatMediaType` for `Content-Disposition`.
 
 ## Auth
 
 OIDC first (Google issuer `https://accounts.google.com`). `/login`
 sets a one-time oauth cookie (`__Host-bootstash-oauth` when
 `PUBLIC_URL` is https, else `bootstash_oauth`) bound to the signed
-state. `/oidc/callback` requires that cookie and consumes the
-transaction. Then PAM `POST /link`. The daemon (`User=bootstash`)
-does not call PAM in process. It execs `/usr/lib/bootstash/pam` (setuid `4750`
+state. AuthCodeURL adds PKCE S256; the verifier is stored in that
+transaction. `/oidc/callback` requires the cookie, consumes the
+transaction, and sends the verifier on Exchange. Then PAM
+`POST /link`. `/link` rotates the session id and cookie. The daemon
+(`User=bootstash`) does not call PAM in process. It execs
+`/usr/lib/bootstash/pam` (setuid `4750`
 `root:bootstash`, not on `PATH`): argv is service + username,
 password on stdin, exit 0/1. The helper runs `pam_authenticate` +
 `pam_acct_mgmt` for service `bootstashd` (`/etc/pam.d/bootstashd` is
@@ -188,4 +197,5 @@ Not an `ADMIN_USERS` HTTP power.
 
 Jail, Alice/Bob, CSRF, oversize, unlinked cannot read trees, Range,
 bad PAM, UID 0, DELETE, cubby `0711`/`2770`/`0640`, `links` / `unlink` PAM map,
-`POST /logout` keeps the map.
+`POST /logout` keeps the map, PKCE, session rotate on `/link`,
+response headers.

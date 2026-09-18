@@ -65,26 +65,36 @@ func (p *Provider) oauth(ctx context.Context, redirectURL string) (*oauth2.Confi
 	}, nil
 }
 
-// AuthCodeURL returns the Google authorization URL.
-func (p *Provider) AuthCodeURL(ctx context.Context, state, nonce, redirectURL string) (string, error) {
+// AuthCodeURL returns the Google authorization URL and a PKCE verifier.
+func (p *Provider) AuthCodeURL(ctx context.Context, state, nonce, redirectURL string) (string, string, error) {
 	cfg, err := p.oauth(ctx, redirectURL)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return cfg.AuthCodeURL(state, oauth2.SetAuthURLParam("nonce", nonce), oauth2.AccessTypeOnline), nil
+	verifier := oauth2.GenerateVerifier()
+	u := cfg.AuthCodeURL(state,
+		oauth2.SetAuthURLParam("nonce", nonce),
+		oauth2.AccessTypeOnline,
+		oauth2.S256ChallengeOption(verifier),
+	)
+	return u, verifier, nil
 }
 
 // Exchange trades a code for a verified identity.
-func (p *Provider) Exchange(ctx context.Context, code, nonce, redirectURL string) (*Identity, error) {
+func (p *Provider) Exchange(ctx context.Context, code, nonce, redirectURL, verifier string) (*Identity, error) {
 	cfg, err := p.oauth(ctx, redirectURL)
 	if err != nil {
 		return nil, err
 	}
-	_, verifier, err := p.get(ctx)
+	_, idtVerifier, err := p.get(ctx)
 	if err != nil {
 		return nil, err
 	}
-	tok, err := cfg.Exchange(ctx, code)
+	var opts []oauth2.AuthCodeOption
+	if verifier != "" {
+		opts = append(opts, oauth2.VerifierOption(verifier))
+	}
+	tok, err := cfg.Exchange(ctx, code, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +102,7 @@ func (p *Provider) Exchange(ctx context.Context, code, nonce, redirectURL string
 	if !ok || raw == "" {
 		return nil, fmt.Errorf("no id_token")
 	}
-	idt, err := verifier.Verify(ctx, raw)
+	idt, err := idtVerifier.Verify(ctx, raw)
 	if err != nil {
 		return nil, err
 	}

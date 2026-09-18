@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -25,13 +26,14 @@ import (
 
 type fakeIDP struct{}
 
-func (fakeIDP) AuthCodeURL(_ context.Context, state, nonce, redirectURL string) (string, error) {
-	return "https://accounts.google.com/o/oauth2/auth?state=" + state + "&nonce=" + nonce + "&redirect_uri=" + redirectURL, nil
+func (fakeIDP) AuthCodeURL(_ context.Context, state, nonce, redirectURL string) (string, string, error) {
+	return "https://accounts.google.com/o/oauth2/auth?state=" + state + "&nonce=" + nonce + "&redirect_uri=" + redirectURL, "verifier", nil
 }
 
-func (fakeIDP) Exchange(_ context.Context, code, nonce, redirectURL string) (*oidcgoogle.Identity, error) {
+func (fakeIDP) Exchange(_ context.Context, code, nonce, redirectURL, verifier string) (*oidcgoogle.Identity, error) {
 	_ = nonce
 	_ = redirectURL
+	_ = verifier
 	return &oidcgoogle.Identity{
 		Issuer:  "https://accounts.google.com",
 		Subject: "sub-" + code,
@@ -376,6 +378,44 @@ func TestLogoutDropsSessionKeepsLink(t *testing.T) {
 	}
 }
 
+func TestLogoutCSRF(t *testing.T) {
+	s, st, _ := testServer(t)
+	c := linkedSession(t, s, st, "alice")
+	tests := []struct {
+		name, origin, site, referer string
+		want                        int
+	}{
+		{"origin", "https://stash.test", "", "", http.StatusFound},
+		{"bad origin", "https://evil.test", "same-origin", "", http.StatusForbidden},
+		{"null origin same-fetch", "null", "same-origin", "", http.StatusFound},
+		{"null origin none with referer", "null", "none", "https://stash.test/home/", http.StatusFound},
+		{"null origin none no referer", "null", "none", "", http.StatusForbidden},
+		{"fetch same-origin", "", "same-origin", "", http.StatusFound},
+		{"fetch none with referer", "", "none", "https://stash.test/home/", http.StatusFound},
+		{"fetch none no referer", "", "none", "", http.StatusForbidden},
+		{"no headers", "", "", "", http.StatusForbidden},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/logout", nil)
+			if tc.origin != "" {
+				req.Header.Set("Origin", tc.origin)
+			}
+			if tc.site != "" {
+				req.Header.Set("Sec-Fetch-Site", tc.site)
+			}
+			if tc.referer != "" {
+				req.Header.Set("Referer", tc.referer)
+			}
+			req.AddCookie(c)
+			rr := do(s, req)
+			if rr.Code != tc.want {
+				t.Fatalf("%d want %d %s", rr.Code, tc.want, rr.Body.String())
+			}
+		})
+	}
+}
+
 func TestRange(t *testing.T) {
 	s, st, dir := testServer(t)
 	c := linkedSession(t, s, st, "alice")
@@ -646,7 +686,7 @@ func TestCallbackRejects(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			s.putOauthTx(tx.Value, nonce, time.Now().Add(-time.Second))
+			s.putOauthTx(tx.Value, nonce, "", time.Now().Add(-time.Second))
 			return oauthCallback(state, tx)
 		}},
 		{"attacker state", func(t *testing.T, s *Server) *http.Request {
@@ -1093,6 +1133,194 @@ func TestDeleteDoesNotEscape(t *testing.T) {
 	}
 	if _, err := os.Stat(outside); err != nil {
 		t.Fatal("deleted outside jail")
+	}
+}
+
+func checkCookieFlags(t *testing.T, c *http.Cookie, name string, secure bool) {
+	t.Helper()
+	if c == nil {
+		t.Fatalf("missing %s", name)
+	}
+	if c.Name != name {
+		t.Fatalf("name %s want %s", c.Name, name)
+	}
+	if c.Path != "/" {
+		t.Fatalf("path %s", c.Path)
+	}
+	if !c.HttpOnly {
+		t.Fatal("httponly")
+	}
+	if c.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("samesite %v", c.SameSite)
+	}
+	if c.Secure != secure {
+		t.Fatalf("secure %v want %v", c.Secure, secure)
+	}
+}
+
+func TestHTTPSCookieFlags(t *testing.T) {
+	s, _, _ := testServer(t)
+	state, tx := googleLogin(t, s)
+	checkCookieFlags(t, tx, "__Host-bootstash-oauth", true)
+	rr := do(s, oauthCallback(state, tx))
+	if rr.Code != http.StatusFound {
+		t.Fatalf("%d %s", rr.Code, rr.Body.String())
+	}
+	checkCookieFlags(t, cookieNamed(rr, s.cookieName()), "__Host-bootstash", true)
+}
+
+func TestHTTPCookieFlags(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(dir)
+	cfg.PublicURL = "http://stash.test"
+	st, err := OpenStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(cfg, st, fakeIDP{}, mapPAM{"alice": "secret"}, bytes.Repeat([]byte("k"), 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, tx := googleLogin(t, s)
+	checkCookieFlags(t, tx, "bootstash_oauth", false)
+	rr := do(s, oauthCallback(state, tx))
+	if rr.Code != http.StatusFound {
+		t.Fatalf("%d %s", rr.Code, rr.Body.String())
+	}
+	checkCookieFlags(t, cookieNamed(rr, s.cookieName()), "bootstash", false)
+}
+
+func TestContentDisposition(t *testing.T) {
+	s, st, dir := testServer(t)
+	c := linkedSession(t, s, st, "alice")
+	tests := []struct {
+		name string
+		disp string
+	}{
+		{"note.txt", "attachment"},
+		{"x.bin", "attachment"},
+		{"pic.jpg", "inline"},
+		{"pic.png", "inline"},
+		{"doc.pdf", "inline"},
+		{"song.mp3", "inline"},
+		{"clip.mp4", "inline"},
+		{"my file.txt", "attachment"},
+	}
+	for _, tc := range tests {
+		p := filepath.Join(dir, "users", "alice", tc.name)
+		if err := os.WriteFile(p, []byte("x"), 0660); err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodGet, "/home/"+url.PathEscape(tc.name), nil)
+		req.AddCookie(c)
+		rr := do(s, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", tc.name, rr.Code, rr.Body.String())
+		}
+		mediatype, params, err := mime.ParseMediaType(rr.Header().Get("Content-Disposition"))
+		if err != nil {
+			t.Fatalf("%s: %v %q", tc.name, err, rr.Header().Get("Content-Disposition"))
+		}
+		if mediatype != tc.disp {
+			t.Fatalf("%s disp %q want %q", tc.name, mediatype, tc.disp)
+		}
+		if params["filename"] != tc.name {
+			t.Fatalf("%s filename %q", tc.name, params["filename"])
+		}
+	}
+}
+
+func TestContentDispositionFilenameEncoding(t *testing.T) {
+	s, st, dir := testServer(t)
+	c := linkedSession(t, s, st, "alice")
+	name := `say "hi".txt`
+	if err := os.WriteFile(filepath.Join(dir, "users", "alice", name), []byte("x"), 0660); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/home/"+url.PathEscape(name), nil)
+	req.AddCookie(c)
+	rr := do(s, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("%d %s", rr.Code, rr.Body.String())
+	}
+	_, params, err := mime.ParseMediaType(rr.Header().Get("Content-Disposition"))
+	if err != nil {
+		t.Fatalf("%v %q", err, rr.Header().Get("Content-Disposition"))
+	}
+	if params["filename"] != name {
+		t.Fatalf("filename %q want %q (%q)", params["filename"], name, rr.Header().Get("Content-Disposition"))
+	}
+}
+
+func TestResponseSecurityHeaders(t *testing.T) {
+	s, st, dir := testServer(t)
+	c := linkedSession(t, s, st, "alice")
+	if err := os.WriteFile(filepath.Join(dir, "users", "alice", "a.txt"), []byte("x"), 0660); err != nil {
+		t.Fatal(err)
+	}
+	reqs := []*http.Request{
+		httptest.NewRequest(http.MethodGet, "/login", nil),
+		httptest.NewRequest(http.MethodGet, "/home/", nil),
+		httptest.NewRequest(http.MethodGet, "/home/a.txt", nil),
+		httptest.NewRequest(http.MethodGet, "/static/style.css", nil),
+	}
+	var missing []string
+	for _, req := range reqs {
+		if strings.HasPrefix(req.URL.Path, "/home") {
+			req.AddCookie(c)
+		}
+		rr := do(s, req)
+		if rr.Header().Get("X-Content-Type-Options") != "nosniff" {
+			missing = append(missing, req.URL.Path+" nosniff")
+		}
+		if rr.Header().Get("Referrer-Policy") != "same-origin" {
+			missing = append(missing, req.URL.Path+" referrer")
+		}
+		if !strings.Contains(rr.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
+			missing = append(missing, req.URL.Path+" csp")
+		}
+	}
+	if len(missing) > 0 {
+		t.Fatalf("%s", strings.Join(missing, ", "))
+	}
+}
+
+func TestLinkRotatesSessionCookie(t *testing.T) {
+	u, err := user.Current()
+	if err != nil {
+		t.Skip(err)
+	}
+	if u.Uid == "0" {
+		t.Skip("uid 0 cannot link")
+	}
+	if !pamauth.ValidUsername(u.Username) {
+		t.Skip("name")
+	}
+	s, st, _ := testServer(t)
+	s.pam = mapPAM{u.Username: "pw"}
+	sess, err := st.CreateSession("https://accounts.google.com", "sub-rot", u.Username+"@x", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := "username=" + u.Username + "&password=pw"
+	req := httptest.NewRequest(http.MethodPost, "/link", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "https://stash.test")
+	req.AddCookie(&http.Cookie{Name: s.cookieName(), Value: sess.ID})
+	rr := do(s, req)
+	if rr.Code != http.StatusFound {
+		t.Fatalf("link: %d %s", rr.Code, rr.Body.String())
+	}
+	got := cookieNamed(rr, s.cookieName())
+	if got == nil || got.Value == sess.ID {
+		t.Fatalf("cookie %+v old %s", got, sess.ID)
+	}
+	if _, err := st.GetSession(sess.ID); !os.IsNotExist(err) {
+		t.Fatalf("old session: %v", err)
+	}
+	linked, err := st.GetSession(got.Value)
+	if err != nil || linked.PAMUser != u.Username {
+		t.Fatalf("%+v %v", linked, err)
 	}
 }
 

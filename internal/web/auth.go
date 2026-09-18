@@ -45,13 +45,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	u, err := s.idp.AuthCodeURL(r.Context(), state, nonce, s.redirectURI())
+	u, verifier, err := s.idp.AuthCodeURL(r.Context(), state, nonce, s.redirectURI())
 	if err != nil {
 		log.Printf("oidc auth url: %v", err)
 		http.Error(w, "identity provider unavailable", http.StatusBadGateway)
 		return
 	}
-	s.putOauthTx(txID, nonce, time.Now().Add(oauthTTL))
+	s.putOauthTx(txID, nonce, verifier, time.Now().Add(oauthTTL))
 	s.setCookie(w, s.oauthCookieName(), txID, int(oauthTTL.Seconds()))
 	log.Printf("login start google from %s", r.RemoteAddr)
 	http.Redirect(w, r, u, http.StatusFound)
@@ -79,14 +79,14 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid state", http.StatusBadRequest)
 		return
 	}
-	got, err := s.takeOauthTx(c.Value)
+	got, verifier, err := s.takeOauthTx(c.Value)
 	if err != nil || got != nonce {
 		log.Printf("login oauth tx mismatch from %s", r.RemoteAddr)
 		http.Error(w, "invalid state", http.StatusBadRequest)
 		return
 	}
 	s.setCookie(w, s.oauthCookieName(), "", -1)
-	id, err := s.idp.Exchange(r.Context(), r.URL.Query().Get("code"), nonce, s.redirectURI())
+	id, err := s.idp.Exchange(r.Context(), r.URL.Query().Get("code"), nonce, s.redirectURI(), verifier)
 	if err != nil {
 		log.Printf("oidc exchange: %v", err)
 		http.Error(w, "login failed", http.StatusBadRequest)
@@ -152,6 +152,7 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		s.setSessionCookie(w, sess)
 		log.Printf("link ok pam=%s sub=%s email=%s from %s", user, sess.Sub, sess.Email, r.RemoteAddr)
 		http.Redirect(w, r, "/home/", http.StatusFound)
 	default:
