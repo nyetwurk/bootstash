@@ -307,8 +307,17 @@ func TestAliceCannotReadBob(t *testing.T) {
 	}
 }
 
-func TestUnlinkedCannotRead(t *testing.T) {
+func TestHomeLoginRedirect(t *testing.T) {
 	s, st, _ := testServer(t)
+	rr := do(s, httptest.NewRequest(http.MethodGet, "/home/", nil))
+	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/login" {
+		t.Fatalf("GET no cookie: %d %s", rr.Code, rr.Header().Get("Location"))
+	}
+	rr = do(s, httptest.NewRequest(http.MethodPut, "/home/x", strings.NewReader("x")))
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("PUT no cookie: %d", rr.Code)
+	}
+
 	sess, err := st.CreateSession("https://accounts.google.com", "sub-x", "x@y.z", time.Hour)
 	if err != nil {
 		t.Fatal(err)
@@ -316,9 +325,15 @@ func TestUnlinkedCannotRead(t *testing.T) {
 	c := &http.Cookie{Name: s.cookieName(), Value: sess.ID}
 	req := httptest.NewRequest(http.MethodGet, "/home/", nil)
 	req.AddCookie(c)
-	rr := do(s, req)
-	if rr.Code == http.StatusOK {
-		t.Fatalf("unlinked GET /home/ => %d", rr.Code)
+	rr = do(s, req)
+	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/link" {
+		t.Fatalf("GET unlinked: %d %s", rr.Code, rr.Header().Get("Location"))
+	}
+	req = httptest.NewRequest(http.MethodPut, "/home/x", strings.NewReader("x"))
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("PUT unlinked: %d", rr.Code)
 	}
 }
 
@@ -374,8 +389,8 @@ func TestLogoutDropsSessionKeepsLink(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/home/", nil)
 	req.AddCookie(c)
 	rr = do(s, req)
-	if rr.Code != http.StatusUnauthorized {
-		t.Fatalf("after logout GET /home/ => %d", rr.Code)
+	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/login" {
+		t.Fatalf("after logout GET /home/ => %d %s", rr.Code, rr.Header().Get("Location"))
 	}
 }
 
@@ -890,6 +905,68 @@ func TestHTMLPages(t *testing.T) {
 		if !strings.Contains(nested, want) {
 			t.Fatalf("nested listing missing %q: %s", want, nested)
 		}
+	}
+}
+
+func TestHTMLErrorPages(t *testing.T) {
+	s, st, _ := testServer(t)
+	rr := do(s, httptest.NewRequest(http.MethodGet, "/nope", nil))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("404: %d", rr.Code)
+	}
+	if !strings.Contains(rr.Header().Get("Content-Type"), "text/html") {
+		t.Fatalf("content-type %s", rr.Header().Get("Content-Type"))
+	}
+	body := rr.Body.String()
+	for _, want := range []string{
+		`class="door"`,
+		`class="brand"`,
+		"That page is not here.",
+		`href="/"`,
+		`class="btn"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("404 missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "404 page not found") {
+		t.Fatal("stdlib 404")
+	}
+
+	rr = do(s, httptest.NewRequest(http.MethodGet, "/login?provider=nope", nil))
+	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/login" {
+		t.Fatalf("unknown provider: %d %s", rr.Code, rr.Header().Get("Location"))
+	}
+
+	rr = do(s, httptest.NewRequest(http.MethodGet, "/logout", nil))
+	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/" {
+		t.Fatalf("GET logout: %d %s", rr.Code, rr.Header().Get("Location"))
+	}
+
+	c := linkedSession(t, s, st, "alice")
+	req := httptest.NewRequest(http.MethodGet, "/nope", nil)
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusNotFound || !strings.Contains(rr.Body.String(), "Sign out") {
+		t.Fatalf("signed 404: %d %s", rr.Code, rr.Body.String())
+	}
+
+	state, _ := googleLogin(t, s)
+	req = oauthCallback(state, nil)
+	rr = do(s, req)
+	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "Sign in with Google") {
+		t.Fatalf("callback html: %d %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "Sign-in expired") {
+		t.Fatalf("callback msg: %s", rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/logout", nil)
+	req.Header.Set("Accept", "text/html")
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), "This request was rejected.") {
+		t.Fatalf("csrf html: %d %s", rr.Code, rr.Body.String())
 	}
 }
 

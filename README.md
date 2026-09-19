@@ -85,7 +85,8 @@ TLS:
   and dest PEMs are removed. A reverse proxy may terminate HTTPS
 
 How to set `LISTEN`, `PUBLIC_URL`, and TLS:
-[`QUICKSTART.md`](QUICKSTART.md).
+[`QUICKSTART.md`](QUICKSTART.md). Google sign-in errors:
+[OIDC troubleshooting](#oidc-troubleshooting).
 
 ## Your files vs everyone else's
 
@@ -121,6 +122,84 @@ root). Ordinary `cp` (not `cp -a`) also works. Do not `chown` to
 Package: `bootstash`. Daemon: `bootstashd`. CLI: `bootstash`
 (`provision-google`, `links`, `unlink`, `put`). Changing the code:
 [`DEVELOPERS.md`](DEVELOPERS.md). Building: [`BUILDING.md`](BUILDING.md).
+
+## OIDC troubleshooting
+
+Sign-in sends Google to `$PUBLIC_URL/oidc/callback`. That string must
+match a **Web application** Authorized redirect URI
+character-for-character. Google never connects to you.
+`bootstash provision-google` prints the URI from the loaded config.
+`sudo bootstash check-config` prints `url=` (the origin the daemon
+will send). Reload after changing `PUBLIC_URL` or installing
+`/etc/bootstash/oidc-google.json`.
+
+### Obvious issues
+
+- First install without a Google client JSON stays down
+- Desktop (`installed`) JSON is rejected; download the **Web
+  application** client
+- Consent screen in Testing: add your Google account as a test user,
+  or Google returns `access_denied`
+- Register the redirect URI on the **same** client whose JSON is in
+  `/etc/bootstash/oidc-google.json`
+- `PUBLIC_URL` is the URL the **browser** uses. The daemon ignores
+  `X-Forwarded-*`. A reverse proxy must set `PUBLIC_URL` to the vhost
+- Packaged listen is loopback. Binding only a tunnel NIC while the
+  origin is a public `:443` vhost means the callback misses
+- Finding certs does not move `LISTEN` to 443. Derived `PUBLIC_URL`
+  keeps the listen port (omitted only for 80/443)
+- `TLS=no` keeps TCP binds on HTTP. Write `PUBLIC_URL` as `https://…`
+  when a proxy terminates TLS
+- Google email is not a folder name. After OIDC, `POST /link` with an
+  existing Linux user (not root)
+- Changing or disabling the Unix account does not drop the map;
+  `bootstash unlink` does
+- Extra DNS names are a second origin. HTTPS cookies are `__Host-`
+  and do not follow Apache `ServerAlias`. A separate vhost should
+  `Redirect` to `PUBLIC_URL` (see
+  `/usr/share/doc/bootstash/examples/apache-vhost.conf`)
+- Sign-in page **Sign-in expired**: `PUBLIC_URL` scheme does not
+  match how you reach the daemon (`https` uses `__Host-` cookies,
+  which browsers refuse on HTTP), or you switched hostname
+- Sign-in page **Sign-in failed**: client secret does not match the
+  id, or the daemon was not reloaded after installing the JSON
+- Sign-in page **Google is unavailable**: this host cannot reach
+  `https://accounts.google.com`
+
+### Error 400: `redirect_uri_mismatch`
+
+Google shows this **before** the callback reaches bootstash:
+
+```
+Error 400: redirect_uri_mismatch
+
+You can't sign in to this app because it doesn't comply with Google's
+OAuth 2.0 policy.
+
+If you're the app developer, register the redirect URI in the Google
+Cloud Console.
+Request details: redirect_uri=https://stash.example/oidc/callback
+flowName=GeneralOAuthFlow
+```
+
+`redirect_uri` in Request details is what the daemon sent
+(`$PUBLIC_URL` plus `/oidc/callback`). It is not registered, or it
+differs by scheme, host, port, path, or a trailing slash.
+
+Usual mismatches:
+
+- `http` vs `https`
+- Host (`hostname -f` vs `CERT_NAME` vs the vhost, or `www`)
+- Port (`:8080` on the derived URL while the browser is on `:443`)
+- Path is not exactly `/oidc/callback`
+- The URI was pasted as a JavaScript origin, not a redirect URI
+- `PUBLIC_URL` was changed after the client was created
+
+Copy that `redirect_uri` (or `url=` from `check-config` plus
+`/oidc/callback`) into **Authorized redirect URIs** on that Web
+client. Leave other client fields empty. Sign in again. If you
+changed `PUBLIC_URL`, `systemctl reload bootstash` so the daemon
+sends the new URI.
 
 ## Known issues
 

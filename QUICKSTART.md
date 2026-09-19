@@ -90,6 +90,13 @@ That name must resolve and reach this daemon. If you bind only a
 tunnel NIC but the origin is a public `:443` vhost, the callback
 misses.
 
+One `PUBLIC_URL` host. HTTPS cookies are host-only; do not
+`ServerAlias` the proxy vhost. Redirect extra names to
+`PUBLIC_URL` (sample:
+`/usr/share/doc/bootstash/examples/apache-vhost.conf`).
+Google sign-in errors:
+[`README.md`](README.md#oidc-troubleshooting).
+
 ## TLS and Let’s Encrypt
 
 Not an ACME client. It uses certs already on disk. Default files,
@@ -209,5 +216,6 @@ Configure does not enable the unit.
 
 ## See also
 
+Google sign-in errors: [`README.md`](README.md#oidc-troubleshooting).
 Changing the code: [`DEVELOPERS.md`](DEVELOPERS.md). Building:
 [`BUILDING.md`](BUILDING.md).

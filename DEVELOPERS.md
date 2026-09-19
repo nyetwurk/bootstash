@@ -97,6 +97,8 @@ Do not rewrite the request from `X-Forwarded-Proto` /
 `X-Forwarded-Host`. Browser origin is `PUBLIC_URL` (OIDC, CSRF,
 cookies). A reverse proxy must set `PUBLIC_URL` to the URL the
 browser uses; `Host` on the backend socket does not matter.
+One origin. Extra DNS names `Redirect` at the proxy; do not
+`ProxyPass` two names onto the same daemon.
 
 ## Listen
 
@@ -151,6 +153,10 @@ is not in `bootstash`) and lacks `CAP_FSETID`. PUT/POST write a sibling temp
 then `renameat` so a failed upload keeps the old file.
 
 Routes: `/login`, `/oidc/callback`, `/link`, `/logout`, `/home/`.
+GET/HEAD `/home` without a linked session redirects to `/login` (or
+`/link` if the cookie is unlinked). Other methods return 401.
+Unknown `?provider=` redirects to `/login`. GET `/logout` redirects
+to `/`.
 Unlinked sessions only reach login, callback, `/link`, and `/logout`.
 v1 link table is `bootstash links` and `bootstash unlink USER`
 (operator access to `$DATA/state`), not HTTP.
@@ -163,6 +169,10 @@ UI, no theme picker. Every response sets `nosniff`,
 `Content-Security-Policy: frame-ancestors 'none'` (inline `/link` and
 listing JS stay; do not add a strict `script-src` without a nonce).
 File GET uses `mime.FormatMediaType` for `Content-Disposition`.
+Unknown GET/HEAD routes and login failures are HTML (the login page,
+or a small error page). Cubby HTML GET and form POST failures
+redirect to the listing with a notice. Other methods stay
+text/plain.
 
 ## Auth
 
@@ -212,4 +222,5 @@ Jail, Alice/Bob, CSRF, oversize, unlinked cannot read trees, Range,
 bad PAM, UID 0, DELETE, cubby `0711`/`2770`/`0640`, `links` / `unlink` PAM map,
 `put` into the caller’s cubby, `POST /logout` keeps the map, PKCE,
 session rotate on `/link`, relink drops other sessions, oauth login
-cap, response headers.
+cap, response headers, GET `/home` login redirect, HTML 404 / login-fail
+pages.

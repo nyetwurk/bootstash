@@ -59,6 +59,10 @@ func (d pageData) Row(e listEntry) listEntry {
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, data pageData) {
+	s.renderAt(w, name, data, 0)
+}
+
+func (s *Server) renderAt(w http.ResponseWriter, name string, data pageData, status int) {
 	if data.Title == "" {
 		data.Title = "bootstash"
 	}
@@ -77,9 +81,35 @@ func (s *Server) render(w http.ResponseWriter, name string, data pageData) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if status != 0 && status != http.StatusOK {
+		w.WriteHeader(status)
+	}
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
 		http.Error(w, "template", http.StatusInternalServerError)
 	}
+}
+
+// replyError is an HTML error page for GET/HEAD and for other methods that
+// Accept text/html. PUT and curl stay text/plain.
+func (s *Server) replyError(w http.ResponseWriter, r *http.Request, status int, msg string) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead && !wantsHTML(r) {
+		http.Error(w, msg, status)
+		return
+	}
+	if r.Method == http.MethodHead {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(status)
+		return
+	}
+	data := pageData{Title: http.StatusText(status), Error: msg}
+	if sess := s.session(r); sess != nil {
+		data = sessionPage(sess, data)
+	}
+	s.renderAt(w, "error", data, status)
+}
+
+func (s *Server) loginFail(w http.ResponseWriter, status int, msg string) {
+	s.renderAt(w, "login", pageData{Title: "Sign in", Error: msg}, status)
 }
 
 func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
@@ -89,7 +119,7 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	}
 	name := path.Base(r.URL.Path)
 	if name != "style.css" {
-		http.NotFound(w, r)
+		s.replyError(w, r, http.StatusNotFound, "That page is not here.")
 		return
 	}
 	b, err := fs.ReadFile(templateFS, "templates/style.css")

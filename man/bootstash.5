@@ -114,6 +114,12 @@ Ports 80 and 443 are omitted.
 .B localhost
 is not used.
 Write this when the browser’s URL is not that host.
+HTTPS session cookies are host-only.
+Extra DNS names must
+.B Redirect
+here; do not proxy the same backend on two names.
+See
+.IR /usr/share/doc/bootstash/examples .
 .TP
 .B LISTEN
 Repeatable listen spec:

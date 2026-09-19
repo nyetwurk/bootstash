@@ -25,6 +25,14 @@ import (
 func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 	sess := s.session(r)
 	if sess == nil || sess.PAMUser == "" {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			loc := "/login"
+			if sess != nil {
+				loc = "/link"
+			}
+			http.Redirect(w, r, loc, http.StatusFound)
+			return
+		}
 		http.Error(w, "login required", http.StatusUnauthorized)
 		return
 	}
@@ -39,12 +47,12 @@ func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	rootPath, err := s.jailPath(sess)
 	if err != nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		s.replyError(w, r, http.StatusNotFound, "Could not open your files.")
 		return
 	}
 	root, err := jail.OpenRoot(rootPath)
 	if err != nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		s.replyError(w, r, http.StatusNotFound, "Could not open your files.")
 		return
 	}
 	defer root.Close()
@@ -222,7 +230,7 @@ func (s *Server) servePost(w http.ResponseWriter, r *http.Request, root *jail.Ro
 	if strings.HasPrefix(ct, "multipart/form-data") {
 		r.Body = http.MaxBytesReader(w, r.Body, s.config().MaxUpload+4096)
 		if err := r.ParseMultipartForm(s.config().MaxUpload); err != nil {
-			http.Error(w, "upload too large", http.StatusRequestEntityTooLarge)
+			s.formFail(w, r, prefix, rel, "too-large", "upload too large", http.StatusRequestEntityTooLarge)
 			return
 		}
 		if r.FormValue("mkdir") != "" {
@@ -239,7 +247,7 @@ func (s *Server) servePost(w http.ResponseWriter, r *http.Request, root *jail.Ro
 		}
 		fh, hdr, err := r.FormFile("file")
 		if err != nil {
-			http.Error(w, "file required", http.StatusBadRequest)
+			s.formFail(w, r, prefix, rel, "need-file", "file required", http.StatusBadRequest)
 			return
 		}
 		defer fh.Close()
@@ -250,16 +258,16 @@ func (s *Server) servePost(w http.ResponseWriter, r *http.Request, root *jail.Ro
 		var ok bool
 		name, ok = entryName(name)
 		if !ok {
-			http.Error(w, "invalid name", http.StatusBadRequest)
+			s.formFail(w, r, prefix, rel, "bad-name", "invalid name", http.StatusBadRequest)
 			return
 		}
 		dest := path.Join(rel, name)
 		if err := root.Replace(dest, 0660, fh); err != nil {
 			if isUploadTooLarge(err) {
-				http.Error(w, "upload failed", http.StatusRequestEntityTooLarge)
+				s.formFail(w, r, prefix, rel, "too-large", "upload failed", http.StatusRequestEntityTooLarge)
 				return
 			}
-			statusFromJail(w, err)
+			s.jailFail(w, r, prefix, rel, err)
 			return
 		}
 		s.chownRel(root, dest, sess.PAMUser)
@@ -277,18 +285,18 @@ func (s *Server) servePost(w http.ResponseWriter, r *http.Request, root *jail.Ro
 		s.doMkdir(w, r, root, prefix, rel, name, sess)
 		return
 	}
-	http.Error(w, "bad request", http.StatusBadRequest)
+	s.replyError(w, r, http.StatusBadRequest, "That request was not understood.")
 }
 
 func (s *Server) doMkdir(w http.ResponseWriter, r *http.Request, root *jail.Root, prefix, rel, name string, sess *store.Session) {
 	if name == "" {
 		name = path.Base(strings.TrimSuffix(rel, "/"))
 		if rel == "" || name == "." || name == "/" {
-			http.Error(w, "name required", http.StatusBadRequest)
+			s.formFail(w, r, prefix, rel, "need-name", "name required", http.StatusBadRequest)
 			return
 		}
 		if err := root.Mkdir(rel, 0770); err != nil {
-			statusFromJail(w, err)
+			s.jailFail(w, r, prefix, rel, err)
 			return
 		}
 		s.chownRel(root, rel, sess.PAMUser)
@@ -297,12 +305,12 @@ func (s *Server) doMkdir(w http.ResponseWriter, r *http.Request, root *jail.Root
 	}
 	name, ok := entryName(name)
 	if !ok {
-		http.Error(w, "invalid name", http.StatusBadRequest)
+		s.formFail(w, r, prefix, rel, "bad-name", "invalid name", http.StatusBadRequest)
 		return
 	}
 	dest := path.Join(rel, name)
 	if err := root.Mkdir(dest, 0770); err != nil {
-		statusFromJail(w, err)
+		s.jailFail(w, r, prefix, rel, err)
 		return
 	}
 	s.chownRel(root, dest, sess.PAMUser)
@@ -313,7 +321,7 @@ func (s *Server) doDeleteForm(w http.ResponseWriter, r *http.Request, root *jail
 	var ok bool
 	name, ok = entryName(name)
 	if !ok {
-		http.Error(w, "invalid name", http.StatusBadRequest)
+		s.formFail(w, r, prefix, rel, "bad-name", "invalid name", http.StatusBadRequest)
 		return
 	}
 	dest := path.Join(rel, name)
@@ -334,6 +342,11 @@ func (s *Server) serveDelete(w http.ResponseWriter, r *http.Request, root *jail.
 				return
 			}
 			http.Error(w, "directory not empty", http.StatusConflict)
+			return
+		}
+		if redirect != "" {
+			s.setNotice(w, jailErrKey(err))
+			http.Redirect(w, r, redirect, http.StatusSeeOther)
 			return
 		}
 		statusFromJail(w, err)
@@ -390,14 +403,41 @@ func parentListing(prefix, rel string) string {
 	return listingURL(prefix, parent)
 }
 
+func (s *Server) formFail(w http.ResponseWriter, r *http.Request, prefix, rel, key, plain string, status int) {
+	if wantsHTML(r) {
+		s.setNotice(w, key)
+		http.Redirect(w, r, listingURL(prefix, rel), http.StatusSeeOther)
+		return
+	}
+	http.Error(w, plain, status)
+}
+
+func (s *Server) jailFail(w http.ResponseWriter, r *http.Request, prefix, rel string, err error) {
+	if wantsHTML(r) {
+		s.setNotice(w, jailErrKey(err))
+		http.Redirect(w, r, listingURL(prefix, rel), http.StatusSeeOther)
+		return
+	}
+	statusFromJail(w, err)
+}
+
 func wantsHTML(r *http.Request) bool {
 	return strings.Contains(r.Header.Get("Accept"), "text/html")
 }
 
 func (s *Server) cubbyErr(w http.ResponseWriter, r *http.Request, prefix, rel string, err error) {
-	if r.Method == http.MethodGet && wantsHTML(r) && strings.Trim(rel, "/") != "" {
-		s.setNotice(w, jailErrKey(err))
-		http.Redirect(w, r, parentListing(prefix, rel), http.StatusSeeOther)
+	if r.Method == http.MethodGet && wantsHTML(r) {
+		if strings.Trim(rel, "/") != "" {
+			s.setNotice(w, jailErrKey(err))
+			http.Redirect(w, r, parentListing(prefix, rel), http.StatusSeeOther)
+			return
+		}
+		msg := listingErrMessage(jailErrKey(err))
+		if msg == "" {
+			msg = "Could not open that."
+		}
+		code, _ := jailHTTP(err)
+		s.replyError(w, r, code, msg)
 		return
 	}
 	statusFromJail(w, err)
@@ -417,6 +457,14 @@ func listingErrMessage(key string) string {
 		return "That is not a folder."
 	case "failed":
 		return "Could not open that."
+	case "too-large":
+		return "That file is too large."
+	case "need-file":
+		return "Choose a file to upload."
+	case "bad-name":
+		return "That name is not allowed."
+	case "need-name":
+		return "Name required."
 	default:
 		return ""
 	}
@@ -453,22 +501,23 @@ func isUploadTooLarge(err error) bool {
 	return errors.Is(err, io.ErrUnexpectedEOF)
 }
 
-func statusFromJail(w http.ResponseWriter, err error) {
+func jailHTTP(err error) (int, string) {
 	if jail.IsNotExist(err) {
-		http.Error(w, "not found", http.StatusNotFound)
-		return
+		return http.StatusNotFound, "not found"
 	}
 	if errors.Is(err, jail.ErrEscape) || errors.Is(err, jail.ErrInvalid) {
-		http.Error(w, "invalid path", http.StatusBadRequest)
-		return
+		return http.StatusBadRequest, "invalid path"
 	}
 	if errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM) {
-		http.Error(w, "not authorized", http.StatusForbidden)
-		return
+		return http.StatusForbidden, "not authorized"
 	}
 	if errors.Is(err, jail.ErrNotDir) || errors.Is(err, syscall.ENOTDIR) {
-		http.Error(w, "not a directory", http.StatusBadRequest)
-		return
+		return http.StatusBadRequest, "not a directory"
 	}
-	http.Error(w, "forbidden", http.StatusForbidden)
+	return http.StatusForbidden, "forbidden"
+}
+
+func statusFromJail(w http.ResponseWriter, err error) {
+	code, msg := jailHTTP(err)
+	http.Error(w, msg, code)
 }

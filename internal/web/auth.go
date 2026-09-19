@@ -27,33 +27,33 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Query().Get("provider") != "google" {
-		http.Error(w, "unknown provider", http.StatusNotFound)
+		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
 	nonce, err := randomHex(16)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		s.loginFail(w, http.StatusInternalServerError, "Something went wrong.")
 		return
 	}
 	txID, err := randomHex(32)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		s.loginFail(w, http.StatusInternalServerError, "Something went wrong.")
 		return
 	}
 	state, err := s.signState(nonce)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		s.loginFail(w, http.StatusInternalServerError, "Something went wrong.")
 		return
 	}
 	u, verifier, err := s.idp.AuthCodeURL(r.Context(), state, nonce, s.redirectURI())
 	if err != nil {
 		log.Printf("oidc auth url: %v", err)
-		http.Error(w, "identity provider unavailable", http.StatusBadGateway)
+		s.loginFail(w, http.StatusBadGateway, "Google is unavailable. Try again.")
 		return
 	}
 	if err := s.putOauthTx(txID, nonce, verifier, time.Now().Add(oauthTTL)); err != nil {
 		log.Printf("login oauth tx full from %s", r.RemoteAddr)
-		http.Error(w, "too many logins", http.StatusServiceUnavailable)
+		s.loginFail(w, http.StatusServiceUnavailable, "Too many sign-in attempts. Try again.")
 		return
 	}
 	s.setCookie(w, s.oauthCookieName(), txID, int(oauthTTL.Seconds()))
@@ -68,38 +68,38 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	if errMsg := r.URL.Query().Get("error"); errMsg != "" {
 		log.Printf("login oidc error from %s: %s", r.RemoteAddr, errMsg)
-		http.Error(w, "oidc error: "+errMsg, http.StatusBadRequest)
+		s.loginFail(w, http.StatusBadRequest, "Sign-in was cancelled or failed.")
 		return
 	}
 	c, err := r.Cookie(s.oauthCookieName())
 	if err != nil || c.Value == "" {
 		log.Printf("login missing oauth cookie from %s", r.RemoteAddr)
-		http.Error(w, "invalid state", http.StatusBadRequest)
+		s.loginFail(w, http.StatusBadRequest, "Sign-in expired. Try again.")
 		return
 	}
 	nonce, err := s.verifyState(r.URL.Query().Get("state"))
 	if err != nil {
 		log.Printf("login invalid state from %s", r.RemoteAddr)
-		http.Error(w, "invalid state", http.StatusBadRequest)
+		s.loginFail(w, http.StatusBadRequest, "Sign-in expired. Try again.")
 		return
 	}
 	got, verifier, err := s.takeOauthTx(c.Value)
 	if err != nil || got != nonce {
 		log.Printf("login oauth tx mismatch from %s", r.RemoteAddr)
-		http.Error(w, "invalid state", http.StatusBadRequest)
+		s.loginFail(w, http.StatusBadRequest, "Sign-in expired. Try again.")
 		return
 	}
 	s.setCookie(w, s.oauthCookieName(), "", -1)
 	id, err := s.idp.Exchange(r.Context(), r.URL.Query().Get("code"), nonce, s.redirectURI(), verifier)
 	if err != nil {
 		log.Printf("oidc exchange: %v", err)
-		http.Error(w, "login failed", http.StatusBadRequest)
+		s.loginFail(w, http.StatusBadRequest, "Sign-in failed. Try again.")
 		return
 	}
 	sess, err := s.store.CreateSession(id.Issuer, id.Subject, id.Email, sessionTTL)
 	if err != nil {
 		log.Printf("login session: %v", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		s.loginFail(w, http.StatusInternalServerError, "Something went wrong.")
 		return
 	}
 	s.setSessionCookie(w, sess)
@@ -129,7 +129,7 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
 		user := strings.TrimSpace(r.FormValue("username"))
 		pass := r.FormValue("password")
 		if s.pam == nil {
-			http.Error(w, "pam unavailable", http.StatusInternalServerError)
+			s.replyError(w, r, http.StatusInternalServerError, "Something went wrong.")
 			return
 		}
 		if err := s.pam.Authenticate(user, pass); err != nil {
@@ -153,7 +153,7 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := s.store.SaveLinkedSession(sess, user); err != nil {
 			log.Printf("link store pam=%s sub=%s: %v", user, sess.Sub, err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			s.replyError(w, r, http.StatusInternalServerError, "Something went wrong.")
 			return
 		}
 		s.setSessionCookie(w, sess)
@@ -166,7 +166,7 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
 	if !s.requireCSRF(w, r) {

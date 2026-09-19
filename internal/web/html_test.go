@@ -79,4 +79,7 @@ func TestJailErrKey(t *testing.T) {
 	if listingErrMessage("failed") != "Could not open that." {
 		t.Fatalf("failed message %q", listingErrMessage("failed"))
 	}
+	if listingErrMessage("too-large") != "That file is too large." {
+		t.Fatalf("too-large message %q", listingErrMessage("too-large"))
+	}
 }

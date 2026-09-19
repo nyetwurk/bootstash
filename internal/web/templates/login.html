@@ -2,6 +2,7 @@
 {{define "login"}}
 <div class="door">
 <a class="brand" href="/">bootstash</a>
+{{if .Error}}<p class="err" role="alert">{{.Error}}</p>{{end}}
 <a class="btn" href="/login?provider=google">Sign in with Google</a>
 </div>
 {{end}}

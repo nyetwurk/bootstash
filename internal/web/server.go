@@ -166,7 +166,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/static/"):
 		s.handleStatic(w, r)
 	default:
-		http.NotFound(w, r)
+		s.replyError(w, r, http.StatusNotFound, "That page is not here.")
 	}
 }
 

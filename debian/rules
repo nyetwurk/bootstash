@@ -42,7 +42,7 @@ override_dh_auto_install:
 	install -d debian/bootstash/usr/share/doc/bootstash/examples
 	install -m 0644 contrib/config.example debian/bootstash/usr/share/doc/bootstash/examples/config.example
 	install -m 0644 contrib/nginx-location.conf debian/bootstash/usr/share/doc/bootstash/examples/nginx-location.conf
-	install -m 0644 contrib/apache-location.conf debian/bootstash/usr/share/doc/bootstash/examples/apache-location.conf
+	install -m 0644 contrib/apache-vhost.conf debian/bootstash/usr/share/doc/bootstash/examples/apache-vhost.conf
 
 # Do not enable. Do not stop on upgrade (that would leave the
 # unit down). Start/try-restart is in postinst after cert sync,

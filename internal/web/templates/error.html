@@ -1,0 +1,13 @@
+{{/* Copyright (C) 2026 Nye Liu. SPDX-License-Identifier: GPL-3.0-or-later */}}
+{{define "error"}}
+{{if .SignedIn}}
+<p class="err" role="alert">{{.Error}}</p>
+<p><a class="btn" href="/">Back</a></p>
+{{else}}
+<div class="door">
+<a class="brand" href="/">bootstash</a>
+<p class="err" role="alert">{{.Error}}</p>
+<a class="btn" href="/">Back</a>
+</div>
+{{end}}
+{{end}}

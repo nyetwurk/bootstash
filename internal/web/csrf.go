@@ -30,6 +30,6 @@ func (s *Server) requireCSRF(w http.ResponseWriter, r *http.Request) bool {
 	if s.checkCSRF(r) {
 		return true
 	}
-	http.Error(w, "csrf rejected", http.StatusForbidden)
+	s.replyError(w, r, http.StatusForbidden, "This request was rejected.")
 	return false
 }
