@@ -1,5 +1,6 @@
 /bin/
 /packages/
+/obj-*/
 /debian/changelog
 /debian/.debhelper/
 /debian/bootstash/

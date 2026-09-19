@@ -20,7 +20,9 @@ make distclean  # clean + packages/ + debian/changelog
                 # (developer wipe; dpkg clean is make clean only)
 ```
 
-No `vendor/`. `make packages` writes `packages/` (gitignored). Classic
+No `vendor/`. `debian/rules` pins `--buildsystem=none` so an
+installed `dh-golang` cannot set `GOPROXY=off`. `make packages`
+writes `packages/` (gitignored). Classic
 debian-src parent directory:
 
 ```

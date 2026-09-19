@@ -11,8 +11,11 @@ export GOTOOLCHAIN = local
 GIT_VERSION ?= $(shell git describe --tags --abbrev=4 --dirty --always 2>/dev/null || echo unknown)
 VERSION_LDFLAGS = -X github.com/nyet/bootstash/internal/version.Version=$(GIT_VERSION)
 
+# none: we override every dh_auto_*. Autoselect still constructs
+# dh-golang when that addon is installed, and its new() sets
+# GOPROXY=off (and GOPATH/GOCACHE under obj-*).
 %:
-	dh $@ --with installsysusers
+	dh $@ --with installsysusers --buildsystem=none
 
 override_dh_auto_build:
 	mkdir -p bin
