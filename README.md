@@ -56,6 +56,15 @@ Install is a **public `.deb`**.
 - Browse **your** folder that other people cannot see
 - Download files, including large ones (Range so a browser can play or
   save them)
+- Import an `.ovpn` from OpenVPN Connect: paste this cubby’s origin
+  (`PUBLIC_URL`, not a file path). After Google, allow the page to
+  open Connect (or tap **Open in OpenVPN Connect**). One file, or
+  `client.ovpn` among several, imports itself. Several other `.ovpn`
+  files: pick one on that page. Connect should show
+  `vpn-host [filename]` (OpenVPN `remote` in the file, then the
+  cubby name; the URL you paste is still `PUBLIC_URL`)
+- Copy a file’s link from the listing (clipboard icon next to the
+  name)
 - Upload into **your** folder
 - From a host login: `bootstash put` files into **your** folder (not sudo)
 - Delete files (and empty folders) in **your** folder

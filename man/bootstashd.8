@@ -31,6 +31,46 @@ HTTP
 .B DELETE
 removes a file or empty directory in a writable tree (not rename).
 .PP
+OpenVPN Connect URL import pastes
+.B PUBLIC_URL
+(the origin, not a file path) and probes
+.B HEAD
+or
+.B GET /openvpn-api/profile .
+The daemon answers
+.B Ovpn-WebAuth
+(\fBbootstash,external\fR) on that probe and on a
+.B 401
+from
+.B /rest/GetUserlogin
+and
+.B /rest/GetAutologin
+so Connect opens a normal browser instead of a password dialog.
+Then the usual Google sign-in. Once linked, a browser GET of that URL
+is a page that opens
+.B openvpn://import-profile/
+with a one-time token (60 seconds, two GETs, then 404) so Connect can fetch
+.B client.ovpn
+(or the only
+.BR .ovpn ).
+Several
+.B .ovpn
+files without a unique
+.B client.ovpn
+are a picker on that page (tap one; the app is not opened
+automatically).
+The imported profile’s display name is the OpenVPN
+.B remote
+host, then the cubby filename in brackets
+(\fIremote\fP [\fIfilename\fP]).
+The URL you paste is still
+.BR PUBLIC_URL ;
+that is not the tunnel endpoint.
+A cubby GET of
+.B .ovpn
+is the file as stored.
+This is not Access Server Basic Auth.
+.PP
 It is a convenience store, not a high-assurance secrets engine. Isolation
 is a path jail plus POSIX permissions; the process runs as one service
 user

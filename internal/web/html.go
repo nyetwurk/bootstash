@@ -31,7 +31,16 @@ type pageData struct {
 	SignedIn bool
 	PAMUser  string
 	OIDCUser string
+	File     string
+	Download string
+	Import   template.URL
+	Choices  []ovpnChoice
 	Entries  []listEntry
+}
+
+type ovpnChoice struct {
+	Name   string
+	Import template.URL
 }
 
 type crumb struct {

@@ -4,6 +4,10 @@
 <span class="kind" aria-hidden="true">{{if .Link}}🔗{{else if .Dir}}📁{{else}}📄{{end}}</span>
 <span class="named">
 <a class="name" href="{{.Href}}">{{.Name}}{{if .Dir}}/{{end}}</a>
+<button class="copy" type="button" aria-label="Copy link">
+<svg class="clip" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+<svg class="ok" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+</button>
 {{if not .Dir}}<span class="mark"{{if not .Mark}} hidden{{end}}>⬇️</span>{{end}}
 </span>
 <span class="meta">
@@ -63,7 +67,50 @@
   }
   var list = document.querySelector(".files");
   if (!list) return;
+  function copyFallback(text) {
+    return new Promise(function (resolve, reject) {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        if (document.execCommand("copy")) resolve();
+        else reject(new Error("copy"));
+      } catch (err) {
+        reject(err);
+      } finally {
+        document.body.removeChild(ta);
+      }
+    });
+  }
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).catch(function () {
+        return copyFallback(text);
+      });
+    }
+    return copyFallback(text);
+  }
   list.addEventListener("click", function (ev) {
+    var btn = ev.target.closest("button.copy");
+    if (btn) {
+      ev.preventDefault();
+      var row = btn.closest("li");
+      var href = row && row.querySelector("a.name");
+      if (!href) return;
+      copyText(href.href).then(function () {
+        btn.classList.add("copied");
+        btn.setAttribute("aria-label", "Copied");
+        window.setTimeout(function () {
+          btn.classList.remove("copied");
+          btn.setAttribute("aria-label", "Copy link");
+        }, 1500);
+      }).catch(function () {});
+      return;
+    }
     var a = ev.target.closest("a.name");
     if (!a) return;
     var li = a.closest("li");

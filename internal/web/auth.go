@@ -105,11 +105,11 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	s.setSessionCookie(w, sess)
 	if sess.PAMUser == "" {
 		log.Printf("login oidc sub=%s email=%s from %s (unlinked)", id.Subject, id.Email, r.RemoteAddr)
-		http.Redirect(w, r, "/link", http.StatusFound)
+		http.Redirect(w, r, s.afterLogin(r, false), http.StatusFound)
 		return
 	}
 	log.Printf("login oidc sub=%s email=%s pam=%s from %s", id.Subject, id.Email, sess.PAMUser, r.RemoteAddr)
-	http.Redirect(w, r, "/home/", http.StatusFound)
+	http.Redirect(w, r, s.afterLogin(r, true), http.StatusFound)
 }
 
 func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +158,7 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
 		}
 		s.setSessionCookie(w, sess)
 		log.Printf("link ok pam=%s sub=%s email=%s from %s", user, sess.Sub, sess.Email, r.RemoteAddr)
-		http.Redirect(w, r, "/home/", http.StatusFound)
+		http.Redirect(w, r, s.afterLogin(r, true), http.StatusFound)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}

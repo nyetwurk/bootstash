@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -50,15 +51,28 @@ type IDP interface {
 
 // Server is the HTTP handler plus listener manager.
 type Server struct {
-	cfg     atomic.Value // *config.Config
-	store   *store.Store
-	idp     IDP
-	pam     pamauth.Authenticator
-	cert    atomic.Value // *tls.Certificate
-	manager *bind.Manager
-	key     []byte
-	oauthMu sync.Mutex
-	oauthTx map[string]oauthTx
+	cfg         atomic.Value // *config.Config
+	store       *store.Store
+	idp         IDP
+	pam         pamauth.Authenticator
+	cert        atomic.Value // *tls.Certificate
+	manager     *bind.Manager
+	key         []byte
+	oauthMu     sync.Mutex
+	oauthTx     map[string]oauthTx
+	ovpnMu      sync.Mutex
+	ovpnTickets map[string]ovpnTicket
+}
+
+const ovpnTicketTTL = 60 * time.Second
+const ovpnMaxTickets = 1024
+const ovpnTicketUses = 2
+
+type ovpnTicket struct {
+	pam  string
+	rel  string
+	exp  time.Time
+	left int
 }
 
 // New constructs a server. cfg must already be Ready() for production start.
@@ -163,6 +177,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleLogout(w, r)
 	case strings.HasPrefix(r.URL.Path, "/home"):
 		s.handleFiles(w, r)
+	case r.URL.Path == "/openvpn-api/profile":
+		s.handleOpenVPNProfile(w, r)
+	case r.URL.Path == "/rest/GetUserlogin", r.URL.Path == "/rest/GetAutologin":
+		s.handleOpenVPNRest(w, r)
 	case strings.HasPrefix(r.URL.Path, "/static/"):
 		s.handleStatic(w, r)
 	default:
@@ -175,16 +193,88 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	http.Redirect(w, r, s.entryPath(r), http.StatusFound)
+}
+
+// ovpnWebAuth tells OpenVPN Connect to open a normal browser (Google
+// OIDC) instead of Access Server REST or an in-app webview.
+const ovpnWebAuth = "bootstash,external"
+
+const ovpnRestWebAuth = `<?xml version="1.0" encoding="UTF-8"?>
+<Error>
+  <Type>Authorization Required</Type>
+  <Synopsis>REST method failed</Synopsis>
+  <Message>Ovpn-WebAuth: %s</Message>
+</Error>
+`
+
+func (s *Server) handleOpenVPNProfile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		log.Printf("openvpn %s %s from %s: method not allowed", r.Method, r.URL.Path, r.RemoteAddr)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if tok := r.URL.Query().Get("token"); tok != "" {
+		s.serveOpenVPNTicket(w, r, tok)
+		return
+	}
+	w.Header().Set("Ovpn-WebAuth", ovpnWebAuth)
+	sess := s.session(r)
+	pam := "-"
+	switch {
+	case sess == nil:
+	case sess.PAMUser == "":
+		pam = "(unlinked)"
+	default:
+		pam = sess.PAMUser
+	}
+	if r.Method == http.MethodHead {
+		log.Printf("openvpn HEAD %s pam=%s from %s ua=%q: 200 Ovpn-WebAuth", r.URL.RequestURI(), pam, r.RemoteAddr, r.UserAgent())
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	loc := s.entryPath(r)
+	if loc == "/login" {
+		log.Printf("openvpn GET %s pam=%s from %s ua=%q accept=%q: login", r.URL.RequestURI(), pam, r.RemoteAddr, r.UserAgent(), r.Header.Get("Accept"))
+		s.setOvpnImport(w)
+		s.render(w, "login", pageData{Title: "Sign in"})
+		return
+	}
+	if loc == "/link" {
+		log.Printf("openvpn GET %s pam=%s from %s ua=%q: redirect /link", r.URL.RequestURI(), pam, r.RemoteAddr, r.UserAgent())
+		s.setOvpnImport(w)
+		http.Redirect(w, r, loc, http.StatusFound)
+		return
+	}
+	s.clearOvpnImport(w)
+	s.serveOpenVPNProfile(w, r)
+}
+
+func (s *Server) handleOpenVPNRest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		log.Printf("openvpn rest %s %s from %s: method not allowed", r.Method, r.URL.Path, r.RemoteAddr)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	log.Printf("openvpn rest %s %s from %s ua=%q: 401 Ovpn-WebAuth", r.Method, r.URL.RequestURI(), r.RemoteAddr, r.UserAgent())
+	w.Header().Set("Ovpn-WebAuth", ovpnWebAuth)
+	w.Header().Set("Content-Type", "text/xml; charset=utf-8")
+	w.WriteHeader(http.StatusUnauthorized)
+	if r.Method == http.MethodHead {
+		return
+	}
+	_, _ = fmt.Fprintf(w, ovpnRestWebAuth, ovpnWebAuth)
+}
+
+func (s *Server) entryPath(r *http.Request) string {
 	sess := s.session(r)
 	if sess == nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
-		return
+		return "/login"
 	}
 	if sess.PAMUser == "" {
-		http.Redirect(w, r, "/link", http.StatusFound)
-		return
+		return "/link"
 	}
-	http.Redirect(w, r, "/home/", http.StatusFound)
+	return "/home/"
 }
 
 func (s *Server) session(r *http.Request) *store.Session {
@@ -219,6 +309,31 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, sess *store.Session) {
 
 func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 	s.setCookie(w, s.cookieName(), "", -1)
+}
+
+func (s *Server) ovpnImportCookieName() string {
+	return s.hostCookie("__Host-bootstash-ovpn", "bootstash_ovpn")
+}
+
+func (s *Server) setOvpnImport(w http.ResponseWriter) {
+	s.setCookie(w, s.ovpnImportCookieName(), "1", int((15 * time.Minute).Seconds()))
+}
+
+func (s *Server) clearOvpnImport(w http.ResponseWriter) {
+	s.setCookie(w, s.ovpnImportCookieName(), "", -1)
+}
+
+func (s *Server) afterLogin(r *http.Request, linked bool) string {
+	c, err := r.Cookie(s.ovpnImportCookieName())
+	want := err == nil && c.Value == "1"
+	dest := "/home/"
+	if !linked {
+		dest = "/link"
+	} else if want {
+		dest = "/openvpn-api/profile"
+	}
+	log.Printf("openvpn after-login linked=%v import-cookie=%v -> %s from %s", linked, want, dest, r.RemoteAddr)
+	return dest
 }
 
 func (s *Server) noticeCookieName() string {
@@ -293,6 +408,60 @@ func (s *Server) hostCookie(httpsName, httpName string) string {
 		return httpsName
 	}
 	return httpName
+}
+
+func (s *Server) putOvpnTicket(pam, rel string) (string, error) {
+	id, err := randomHex(16)
+	if err != nil {
+		return "", err
+	}
+	s.ovpnMu.Lock()
+	defer s.ovpnMu.Unlock()
+	if s.ovpnTickets == nil {
+		s.ovpnTickets = make(map[string]ovpnTicket)
+	}
+	now := time.Now()
+	for k, t := range s.ovpnTickets {
+		if now.After(t.exp) {
+			delete(s.ovpnTickets, k)
+		}
+	}
+	if _, ok := s.ovpnTickets[id]; !ok && len(s.ovpnTickets) >= ovpnMaxTickets {
+		return "", fmt.Errorf("ovpn tickets full")
+	}
+	s.ovpnTickets[id] = ovpnTicket{pam: pam, rel: rel, exp: now.Add(ovpnTicketTTL), left: ovpnTicketUses}
+	return id, nil
+}
+
+func (s *Server) peekOvpnTicket(id string) (ovpnTicket, bool) {
+	return s.lookupOvpnTicket(id, false)
+}
+
+func (s *Server) takeOvpnTicket(id string) (ovpnTicket, bool) {
+	return s.lookupOvpnTicket(id, true)
+}
+
+func (s *Server) lookupOvpnTicket(id string, consume bool) (ovpnTicket, bool) {
+	s.ovpnMu.Lock()
+	defer s.ovpnMu.Unlock()
+	t, ok := s.ovpnTickets[id]
+	if !ok {
+		return ovpnTicket{}, false
+	}
+	if time.Now().After(t.exp) {
+		delete(s.ovpnTickets, id)
+		return ovpnTicket{}, false
+	}
+	if !consume {
+		return t, true
+	}
+	t.left--
+	if t.left <= 0 {
+		delete(s.ovpnTickets, id)
+	} else {
+		s.ovpnTickets[id] = t
+	}
+	return t, true
 }
 
 func (s *Server) putOauthTx(id, nonce, verifier string, exp time.Time) error {

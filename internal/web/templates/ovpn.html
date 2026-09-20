@@ -1,0 +1,34 @@
+{{/* Copyright (C) 2026 Nye Liu. SPDX-License-Identifier: GPL-3.0-or-later */}}
+{{define "ovpn"}}
+<div class="panel">
+<h1>OpenVPN</h1>
+{{if .Choices}}
+<p>Choose a profile to open in OpenVPN Connect.</p>
+<div class="stack">
+{{range .Choices}}
+<a class="btn" href="{{.Import}}">{{.Name}}</a>
+{{end}}
+</div>
+<p class="note"><a href="/home/">Your files</a></p>
+{{else if .File}}
+<p>Open <strong>{{.File}}</strong> in OpenVPN Connect.</p>
+{{if .Import}}
+<p><a class="btn" id="ovpn-open" href="{{.Import}}">Open in OpenVPN Connect</a></p>
+{{end}}
+{{if .Download}}
+<p class="note"><a href="{{.Download}}">Save {{.File}}</a> if the app does not open.</p>
+{{end}}
+{{else}}
+<p>No <strong>.ovpn</strong> file in this cubby.</p>
+<p><a class="btn" href="/home/">Your files</a></p>
+{{end}}
+</div>
+{{if .Import}}
+<script>
+(function () {
+  var a = document.getElementById("ovpn-open");
+  if (a && a.href) location.replace(a.href);
+})();
+</script>
+{{end}}
+{{end}}
