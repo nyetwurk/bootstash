@@ -7,11 +7,17 @@ from __future__ import annotations
 
 import email.utils
 import json
+import re
 import subprocess
 import sys
+import textwrap
 import time
 
 MAINTAINER = "nyet <nyet@nyet.org>"
+CHANGELOG_WIDTH = 80
+# GitHub Actions pull_request checkout: "Merge <sha> into <sha>".
+_GH_SHA_MERGE = re.compile(r"^Merge [0-9a-f]{7,40} into [0-9a-f]{7,40}$", re.I)
+_GH_PR_MERGE = re.compile(r"^Merge pull request #\d+\b")
 
 
 def tag_to_deb(tag: str) -> str:
@@ -30,6 +36,29 @@ def suite_for(ver: str) -> str:
 
 def first_line(msg: str) -> str:
     return msg.split("\n", 1)[0].strip()
+
+
+def is_merge_commit(raw: dict) -> bool:
+    if raw.get("merge_commit") is True:
+        return True
+    for key in ("message", "raw_message"):
+        line = first_line(str(raw.get(key) or ""))
+        if _GH_SHA_MERGE.match(line) or _GH_PR_MERGE.match(line):
+            return True
+    return False
+
+
+def wrap_bullet(msg: str) -> list[str]:
+    wrapper = textwrap.TextWrapper(
+        width=CHANGELOG_WIDTH,
+        initial_indent="  * ",
+        subsequent_indent="    ",
+        break_long_words=False,
+        break_on_hyphens=False,
+        replace_whitespace=True,
+        drop_whitespace=True,
+    )
+    return wrapper.wrap(msg)
 
 
 def rfc2822(ts: object, commit_id: str) -> str:
@@ -58,11 +87,16 @@ def bullets(commits: list[object]) -> list[str]:
     for raw in commits:
         if not isinstance(raw, dict):
             continue
+        if is_merge_commit(raw):
+            continue
         msg = first_line(str(raw.get("message") or ""))
         if not msg or msg in seen:
             continue
+        wrapped = wrap_bullet(msg)
+        if not wrapped:
+            continue
         seen.add(msg)
-        lines.append(f"  * {msg}")
+        lines.extend(wrapped)
     if not lines:
         lines.append("  * Development build.")
     return lines

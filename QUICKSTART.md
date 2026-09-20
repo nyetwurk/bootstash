@@ -88,7 +88,9 @@ forces HTTP.
 
 That name must resolve and reach this daemon. If you bind only a
 tunnel NIC but the origin is a public `:443` vhost, the callback
-misses.
+misses. The same origin (not a file path) is what a road warrior
+pastes into OpenVPN Connect (URL import). `.ovpn` files already in
+the cubby are what that import opens.
 
 One `PUBLIC_URL` host. HTTPS cookies are host-only; do not
 `ServerAlias` the proxy vhost. Redirect extra names to

@@ -152,12 +152,40 @@ cubby → `2770`). Do not fchmod cubby dirs: chmod(2) drops
 is not in `bootstash`) and lacks `CAP_FSETID`. PUT/POST write a sibling temp
 then `renameat` so a failed upload keeps the old file.
 
-Routes: `/login`, `/oidc/callback`, `/link`, `/logout`, `/home/`.
+Routes: `/login`, `/oidc/callback`, `/link`, `/logout`, `/home/`,
+`/openvpn-api/profile`, `/rest/GetUserlogin`, `/rest/GetAutologin`.
+HEAD `/openvpn-api/profile` is `200` with `Ovpn-WebAuth:
+bootstash,external` (OpenVPN Connect URL import; `external` so
+Google OIDC runs in a normal browser). Unauthenticated GET there is
+`200` login HTML with that header (not a 302: Connect follows
+redirects and would drop it) and sets a short-lived cookie so
+OIDC/`/link` return to this URL. Linked browser GET (`Accept:
+text/html`) is a page with `openvpn://import-profile/` plus a
+one-time `?token=` URL (60s, two GETs, then 404; Connect fetches
+that itself; no session cookie, no `Ovpn-WebAuth`) and a
+`?download=1` save link (session cookie; attachment). Import and
+token bytes get `# OVPN_ACCESS_SERVER_FRIENDLY_NAME` /
+`setenv FRIENDLY_NAME` as `remote [filename]` (first OpenVPN
+`remote` in the profile, then the cubby name; the paste origin is
+still `PUBLIC_URL`). Cubby GET of `.ovpn` stays the file as
+stored. One `.ovpn` (any name) or a single `client.ovpn` among
+several: auto-open. Several without a unique `client.ovpn`: picker
+(tap, no `location.replace`). None: empty message, not `/home/`.
+Non-HTML linked GET (and `?download=1`) serves the picked profile
+as `application/x-openvpn-profile` attachment, or 302 `/home/` if
+there is no unique pick. `?embedded=true` is an HTML page that
+`postMessage`s `PROFILE_DOWNLOAD_SUCCESS`. Probe and import
+decisions log as `openvpn ...` (journalctl); token lines omit
+`?token=`. GET `/rest/GetUserlogin` and `/rest/GetAutologin` are
+`401` XML `Ovpn-WebAuth: bootstash,external` in the body and
+header, no `WWW-Authenticate`. That is the spec bounce off Access
+Server REST into the browser; not Basic Auth and not a profile.
 GET/HEAD `/home` without a linked session redirects to `/login` (or
 `/link` if the cookie is unlinked). Other methods return 401.
 Unknown `?provider=` redirects to `/login`. GET `/logout` redirects
 to `/`.
-Unlinked sessions only reach login, callback, `/link`, and `/logout`.
+Unlinked sessions only reach login, callback, `/link`, `/logout`,
+and `/openvpn-api/profile` (which sends them to `/link`).
 v1 link table is `bootstash links` and `bootstash unlink USER`
 (operator access to `$DATA/state`), not HTTP.
 HTML **Sign out** is `POST /logout`: this session file and cookie only.
@@ -166,9 +194,19 @@ HTML is a few templates, large targets (laptop, tablet, or phone),
 packaged `:root` + `prefers-color-scheme`. No SPA, no second desktop
 UI, no theme picker. Every response sets `nosniff`,
 `Referrer-Policy: same-origin`, and
-`Content-Security-Policy: frame-ancestors 'none'` (inline `/link` and
-listing JS stay; do not add a strict `script-src` without a nonce).
+`Content-Security-Policy: frame-ancestors 'none'` (inline `/link`,
+listing, and OpenVPN handoff JS stay; do not add a strict
+`script-src` without a nonce).
 File GET uses `mime.FormatMediaType` for `Content-Disposition`.
+Listing file names have a copy-link control (clipboard API,
+`execCommand` fallback, 44px; listing href, not an import token).
+Init parses embedded `internal/web/mime.types` (Debian media-types /
+IANA type-to-extension map) then `mime-local.types` (`.ovpn` →
+`application/x-openvpn-profile`). Lookup is by extension at GET time;
+`text/*` gets `charset=utf-8`. Unknown extensions stay
+`application/octet-stream` (attachment). Do not use the host
+`/etc/mime.types` or Go `mime.TypeByExtension` (those differ by
+machine). Video, audio, image, PDF, and `.ovpn` are inline.
 Unknown GET/HEAD routes and login failures are HTML (the login page,
 or a small error page). Cubby HTML GET and form POST failures
 redirect to the listing with a notice. Other methods stay
@@ -223,4 +261,6 @@ bad PAM, UID 0, DELETE, cubby `0711`/`2770`/`0640`, `links` / `unlink` PAM map,
 `put` into the caller’s cubby, `POST /logout` keeps the map, PKCE,
 session rotate on `/link`, relink drops other sessions, oauth login
 cap, response headers, GET `/home` login redirect, HTML 404 / login-fail
-pages.
+pages, `.ovpn` MIME, HEAD `/openvpn-api/profile`, REST `Ovpn-WebAuth`
+bounce, import `?token=` (no session, no `Ovpn-WebAuth`, titled
+`remote [filename]`), picker HTML, `mime.types` parse.

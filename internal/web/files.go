@@ -4,7 +4,10 @@
 package web
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
+	"html/template"
 	"io"
 	"log"
 	"mime"
@@ -13,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -120,15 +124,8 @@ func (s *Server) serveGet(w http.ResponseWriter, r *http.Request, root *jail.Roo
 		return
 	}
 	defer f.Close()
-	ctype := mime.TypeByExtension(path.Ext(info.Name()))
-	if ctype == "" {
-		ctype = "application/octet-stream"
-	}
-	disp := "attachment"
-	if strings.HasPrefix(ctype, "video/") || strings.HasPrefix(ctype, "audio/") ||
-		strings.HasPrefix(ctype, "image/") || ctype == "application/pdf" {
-		disp = "inline"
-	}
+	ctype := fileContentType(info.Name())
+	disp := contentDisposition(ctype)
 	w.Header().Set("Content-Type", ctype)
 	cd := mime.FormatMediaType(disp, map[string]string{"filename": info.Name()})
 	if cd == "" {
@@ -423,6 +420,325 @@ func (s *Server) jailFail(w http.ResponseWriter, r *http.Request, prefix, rel st
 
 func wantsHTML(r *http.Request) bool {
 	return strings.Contains(r.Header.Get("Accept"), "text/html")
+}
+
+const ovpnImportMax = 1 << 20
+
+const ovpnImportPage = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>OpenVPN</title></head>
+<body>
+<script>
+(function () {
+  var msg = __MSG__;
+  if (window.appEvent && appEvent.postMessage) appEvent.postMessage(msg);
+  else if (window.parent !== window) window.parent.postMessage(msg, "*");
+})();
+</script>
+<p>Profile sent to OpenVPN.</p>
+</body>
+</html>
+`
+
+func (s *Server) serveOpenVPNProfile(w http.ResponseWriter, r *http.Request) {
+	sess := s.session(r)
+	if sess == nil || sess.PAMUser == "" {
+		log.Printf("openvpn GET %s from %s: session lost -> /login", r.URL.RequestURI(), r.RemoteAddr)
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	s.prepareCubbyRead(sess.PAMUser, "")
+	rootPath, err := s.jailPath(sess)
+	if err != nil {
+		log.Printf("openvpn GET %s pam=%s from %s: jail path: %v", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, err)
+		s.replyError(w, r, http.StatusNotFound, "Could not open your files.")
+		return
+	}
+	root, err := jail.OpenRoot(rootPath)
+	if err != nil {
+		log.Printf("openvpn GET %s pam=%s from %s: open cubby: %v", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, err)
+		s.replyError(w, r, http.StatusNotFound, "Could not open your files.")
+		return
+	}
+	defer root.Close()
+	found := collectOvpn(root)
+	rel := pickOvpn(found)
+	if r.URL.Query().Get("embedded") == "true" {
+		if rel == "" {
+			log.Printf("openvpn GET %s pam=%s from %s ua=%q: embedded no profile found=%q -> /home/", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, r.UserAgent(), found)
+			http.Redirect(w, r, "/home/", http.StatusFound)
+			return
+		}
+		f, err := root.Open(rel)
+		if err != nil {
+			log.Printf("openvpn GET %s pam=%s from %s: open %s: %v -> /home/", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, rel, err)
+			http.Redirect(w, r, "/home/", http.StatusFound)
+			return
+		}
+		defer f.Close()
+		body, err := io.ReadAll(io.LimitReader(f, ovpnImportMax+1))
+		if err != nil || int64(len(body)) > ovpnImportMax {
+			log.Printf("openvpn GET %s pam=%s from %s: read %s: %v len=%d", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, rel, err, len(body))
+			s.replyError(w, r, http.StatusInternalServerError, "Something went wrong.")
+			return
+		}
+		payload, err := json.Marshal(map[string]any{
+			"type": "PROFILE_DOWNLOAD_SUCCESS",
+			"data": map[string]string{"profile": string(ovpnTitledProfile(rel, body)), "title": ovpnDisplayName(rel, body)},
+		})
+		if err != nil {
+			s.replyError(w, r, http.StatusInternalServerError, "Something went wrong.")
+			return
+		}
+		log.Printf("openvpn GET %s pam=%s from %s ua=%q: embedded %s %d bytes found=%q", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, r.UserAgent(), rel, len(body), found)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = io.WriteString(w, strings.Replace(ovpnImportPage, "__MSG__", string(payload), 1))
+		return
+	}
+	if wantsHTML(r) && r.URL.Query().Get("download") != "1" {
+		s.renderOvpnHandoff(w, r, sess, found, rel)
+		return
+	}
+	if rel == "" {
+		log.Printf("openvpn GET %s pam=%s from %s ua=%q: no profile found=%q -> /home/", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, r.UserAgent(), found)
+		http.Redirect(w, r, "/home/", http.StatusFound)
+		return
+	}
+	if err := s.writeOvpnAttachment(w, r, sess.PAMUser, rel); err != nil {
+		log.Printf("openvpn GET %s pam=%s from %s: serve %s: %v -> /home/", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, rel, err)
+		http.Redirect(w, r, "/home/", http.StatusFound)
+		return
+	}
+	log.Printf("openvpn GET %s pam=%s from %s ua=%q accept=%q: attachment %s type=%s found=%q", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, r.UserAgent(), r.Header.Get("Accept"), rel, ovpnProfileType, found)
+}
+
+func (s *Server) ovpnImportURL(pam, rel string) (template.URL, error) {
+	id, err := s.putOvpnTicket(pam, rel)
+	if err != nil {
+		return "", err
+	}
+	return template.URL("openvpn://import-profile/" + s.config().PublicURL + "/openvpn-api/profile?token=" + id), nil
+}
+
+func (s *Server) renderOvpnHandoff(w http.ResponseWriter, r *http.Request, sess *store.Session, found []string, rel string) {
+	data := sessionPage(sess, pageData{Title: "OpenVPN"})
+	switch {
+	case rel != "":
+		data.File = path.Base(rel)
+		data.Download = ovpnProfileDownloadURI(r)
+		imp, err := s.ovpnImportURL(sess.PAMUser, rel)
+		if err != nil {
+			log.Printf("openvpn GET %s pam=%s from %s: ticket: %v", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, err)
+		} else {
+			data.Import = imp
+		}
+		log.Printf("openvpn GET %s pam=%s from %s ua=%q: html handoff %s import=%v found=%q", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, r.UserAgent(), rel, data.Import != "", found)
+	case len(found) > 0:
+		sorted := append([]string(nil), found...)
+		sort.Strings(sorted)
+		for _, p := range sorted {
+			imp, err := s.ovpnImportURL(sess.PAMUser, p)
+			if err != nil {
+				log.Printf("openvpn GET %s pam=%s from %s: ticket %s: %v", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, p, err)
+				continue
+			}
+			data.Choices = append(data.Choices, ovpnChoice{Name: p, Import: imp})
+		}
+		log.Printf("openvpn GET %s pam=%s from %s ua=%q: html picker n=%d found=%q", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, r.UserAgent(), len(data.Choices), found)
+	default:
+		log.Printf("openvpn GET %s pam=%s from %s ua=%q: html empty", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, r.UserAgent())
+	}
+	s.render(w, "ovpn", data)
+}
+
+func (s *Server) serveOpenVPNTicket(w http.ResponseWriter, r *http.Request, id string) {
+	var t ovpnTicket
+	var ok bool
+	if r.Method == http.MethodHead {
+		t, ok = s.peekOvpnTicket(id)
+	} else {
+		t, ok = s.takeOvpnTicket(id)
+	}
+	if !ok {
+		log.Printf("openvpn token %s from %s ua=%q: missing", r.Method, r.RemoteAddr, r.UserAgent())
+		http.NotFound(w, r)
+		return
+	}
+	if err := s.writeOvpnAttachment(w, r, t.pam, t.rel); err != nil {
+		log.Printf("openvpn token %s pam=%s from %s ua=%q: %s: %v", r.Method, t.pam, r.RemoteAddr, r.UserAgent(), t.rel, err)
+		http.NotFound(w, r)
+		return
+	}
+	log.Printf("openvpn token %s pam=%s from %s ua=%q: %s", r.Method, t.pam, r.RemoteAddr, r.UserAgent(), t.rel)
+}
+
+func (s *Server) writeOvpnAttachment(w http.ResponseWriter, r *http.Request, pam, rel string) error {
+	if !pamauth.ValidUsername(pam) || rel == "" || !filepath.IsLocal(rel) {
+		return os.ErrNotExist
+	}
+	s.prepareCubbyRead(pam, rel)
+	rootPath, err := s.jailPath(&store.Session{PAMUser: pam})
+	if err != nil {
+		return err
+	}
+	root, err := jail.OpenRoot(rootPath)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	info, err := root.Stat(rel)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return os.ErrNotExist
+	}
+	f, err := root.Open(rel)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	name := path.Base(rel)
+	body, err := io.ReadAll(io.LimitReader(f, ovpnImportMax+1))
+	if err != nil {
+		return err
+	}
+	if int64(len(body)) > ovpnImportMax {
+		return io.ErrUnexpectedEOF
+	}
+	out := ovpnTitledProfile(rel, body)
+	w.Header().Set("Content-Type", ovpnProfileType)
+	cd := mime.FormatMediaType("attachment", map[string]string{"filename": name})
+	if cd == "" {
+		cd = "attachment"
+	}
+	w.Header().Set("Content-Disposition", cd)
+	w.Header().Set("Content-Length", strconv.Itoa(len(out)))
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
+		return nil
+	}
+	_, err = w.Write(out)
+	return err
+}
+
+func ovpnFileLabel(rel string) string {
+	name := ovpnCleanLabel(strings.TrimSuffix(rel, path.Ext(rel)))
+	if name == "" {
+		return "profile"
+	}
+	return name
+}
+
+func ovpnCleanLabel(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case '\n', '\r', '"', '[', ']':
+			return -1
+		default:
+			return r
+		}
+	}, s)
+}
+
+func ovpnRemoteHost(body []byte) string {
+	for _, raw := range bytes.Split(body, []byte("\n")) {
+		line := strings.TrimSpace(string(raw))
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && strings.EqualFold(fields[0], "remote") {
+			return ovpnCleanLabel(fields[1])
+		}
+	}
+	return ""
+}
+
+func ovpnDisplayName(rel string, body []byte) string {
+	name := ovpnFileLabel(rel)
+	host := ovpnRemoteHost(body)
+	if host == "" || host == name {
+		return name
+	}
+	return host + " [" + name + "]"
+}
+
+func ovpnTitledProfile(rel string, body []byte) []byte {
+	if bytes.Contains(body, []byte("OVPN_ACCESS_SERVER_FRIENDLY_NAME=")) || bytes.Contains(body, []byte("setenv FRIENDLY_NAME")) {
+		return body
+	}
+	title := ovpnDisplayName(rel, body)
+	var b bytes.Buffer
+	b.Grow(len(body) + 96)
+	_, _ = b.WriteString("# OVPN_ACCESS_SERVER_FRIENDLY_NAME=")
+	_, _ = b.WriteString(title)
+	_, _ = b.WriteString("\n# OVPN_ACCESS_SERVER_PROFILE=")
+	_, _ = b.WriteString(title)
+	_, _ = b.WriteString("\nsetenv FRIENDLY_NAME \"")
+	_, _ = b.WriteString(title)
+	_, _ = b.WriteString("\"\n")
+	_, _ = b.Write(body)
+	return b.Bytes()
+}
+
+func ovpnProfileDownloadURI(r *http.Request) string {
+	q := r.URL.Query()
+	q.Set("download", "1")
+	q.Del("embedded")
+	path := r.URL.Path
+	if path == "" {
+		path = "/openvpn-api/profile"
+	}
+	return path + "?" + q.Encode()
+}
+
+func collectOvpn(root *jail.Root) []string {
+	var out []string
+	var walk func(rel string, depth int)
+	walk = func(rel string, depth int) {
+		if depth > 4 || len(out) >= 32 {
+			return
+		}
+		infos, err := root.ReadDirNames(rel)
+		if err != nil {
+			return
+		}
+		for _, fi := range infos {
+			if fi.Mode()&os.ModeSymlink != 0 {
+				continue
+			}
+			name := fi.Name()
+			child := name
+			if rel != "" {
+				child = path.Join(rel, name)
+			}
+			if fi.IsDir() {
+				walk(child, depth+1)
+				continue
+			}
+			if strings.EqualFold(path.Ext(name), ".ovpn") {
+				out = append(out, child)
+			}
+		}
+	}
+	walk("", 0)
+	return out
+}
+
+func pickOvpn(paths []string) string {
+	if len(paths) == 1 {
+		return paths[0]
+	}
+	var clients []string
+	for _, p := range paths {
+		if strings.EqualFold(path.Base(p), "client.ovpn") {
+			clients = append(clients, p)
+		}
+	}
+	if len(clients) == 1 {
+		return clients[0]
+	}
+	return ""
 }
 
 func (s *Server) cubbyErr(w http.ResponseWriter, r *http.Request, prefix, rel string, err error) {

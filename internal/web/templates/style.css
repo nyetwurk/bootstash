@@ -124,8 +124,10 @@ main {
 .panel h1 { margin: 0 0 0.6rem; font-size: 1.45rem; }
 .panel p { margin: 0 0 1rem; }
 .err { color: var(--err); margin: 0 0 0.75rem; }
+.note { color: var(--muted); }
 .stack { display: grid; gap: 0.85rem; }
 .stack label { display: grid; gap: 0.35rem; font-weight: 600; }
+.panel .stack .btn { width: 100%; }
 button, .btn, input[type=submit], input[type=file]::file-selector-button {
   min-height: 44px;
   padding: 0.4rem 0.9rem;
@@ -244,7 +246,7 @@ input[type=file] {
   gap: 0.35rem;
 }
 .files .name {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   min-height: 44px;
   display: inline-flex;
@@ -253,6 +255,27 @@ input[type=file] {
   font-weight: 600;
   text-decoration: none;
 }
+.files .copy {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.files .copy:hover,
+.files .copy:focus-visible { color: var(--fg); }
+.files .copy svg {
+  display: block;
+  pointer-events: none;
+}
+.files .copy .ok,
+.files .copy.copied .clip { display: none; }
+.files .copy.copied .ok { display: block; }
 .files .mark {
   flex: 0 0 auto;
   font-size: 1.35rem;

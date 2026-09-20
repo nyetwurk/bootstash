@@ -92,7 +92,9 @@ The daemon reads these files itself; do not use systemd
 .TP
 .B PUBLIC_URL
 Browser-facing URL (scheme and host, no trailing slash).
-Used for OIDC redirects, cookies, and CSRF Origin checks.
+Used for OIDC redirects, cookies, CSRF Origin checks, and the
+origin a road warrior pastes into OpenVPN Connect (not a file
+path).
 .B X-Forwarded-Proto
 and
 .B X-Forwarded-Host

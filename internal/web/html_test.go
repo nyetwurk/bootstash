@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -38,6 +39,50 @@ func TestFormatDateUTC(t *testing.T) {
 	ts := time.Date(2026, 9, 17, 15, 4, 0, 0, time.UTC)
 	if got := formatDate(ts); got != "2026-09-17 15:04" {
 		t.Fatalf("formatDate=%q", got)
+	}
+}
+
+func TestPickOvpn(t *testing.T) {
+	if pickOvpn(nil) != "" {
+		t.Fatal("empty")
+	}
+	if pickOvpn([]string{"a.ovpn"}) != "a.ovpn" {
+		t.Fatal("one")
+	}
+	if pickOvpn([]string{"a.ovpn", "client.ovpn"}) != "client.ovpn" {
+		t.Fatal("prefer client.ovpn")
+	}
+	if pickOvpn([]string{"kit/a.ovpn", "kit/b.ovpn"}) != "" {
+		t.Fatal("several without client.ovpn")
+	}
+	if pickOvpn([]string{"kit/client.ovpn", "a.ovpn"}) != "kit/client.ovpn" {
+		t.Fatal("one nested client.ovpn")
+	}
+	if pickOvpn([]string{"client.ovpn", "kit/client.ovpn"}) != "" {
+		t.Fatal("several client.ovpn")
+	}
+}
+
+func TestOvpnDisplayName(t *testing.T) {
+	if ovpnDisplayName("nyet-tcp.ovpn", nil) != "nyet-tcp" {
+		t.Fatal("no remote")
+	}
+	if ovpnDisplayName("kit/a.ovpn", nil) != "kit/a" {
+		t.Fatal("nested")
+	}
+	if ovpnDisplayName("nyet-tcp.ovpn", []byte("client\nremote vpn.example 1194 udp\n")) != "vpn.example [nyet-tcp]" {
+		t.Fatal("remote [file]")
+	}
+	if ovpnDisplayName("host.ovpn", []byte("remote host\n")) != "host" {
+		t.Fatal("same as remote")
+	}
+	got := string(ovpnTitledProfile("nyet-tcp.ovpn", []byte("remote vpn.example\n")))
+	if !strings.Contains(got, `setenv FRIENDLY_NAME "vpn.example [nyet-tcp]"`) || !strings.Contains(got, "remote vpn.example") {
+		t.Fatalf("titled %q", got)
+	}
+	keep := []byte("# OVPN_ACCESS_SERVER_FRIENDLY_NAME=mine\nremote vpn.example\n")
+	if string(ovpnTitledProfile("nyet-tcp.ovpn", keep)) != string(keep) {
+		t.Fatal("leave existing title")
 	}
 }
 

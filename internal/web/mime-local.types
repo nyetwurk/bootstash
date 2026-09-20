@@ -1,0 +1,7 @@
+# Copyright (C) 2026 Nye Liu
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# bootstash extras on top of mime.types (IANA / Debian media-types).
+# Later lines win over the canonical list.
+
+application/x-openvpn-profile	ovpn

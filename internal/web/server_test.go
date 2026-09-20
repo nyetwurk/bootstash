@@ -876,6 +876,9 @@ func TestHTMLPages(t *testing.T) {
 	if strings.Contains(empty, "⬇️") {
 		t.Fatalf("empty listing download mark: %s", empty)
 	}
+	if strings.Contains(empty, `class="copy"`) {
+		t.Fatalf("empty listing copy: %s", empty)
+	}
 
 	sub := filepath.Join(dir, "users", "alice", "kit")
 	if err := os.Mkdir(sub, 0770); err != nil {
@@ -899,6 +902,8 @@ func TestHTMLPages(t *testing.T) {
 		"1 B",
 		`name="delete"`,
 		"🗑️",
+		`class="copy"`,
+		`aria-label="Copy link"`,
 		`class="mark"`,
 		"⬇️",
 	} {
@@ -1315,6 +1320,7 @@ func TestContentDisposition(t *testing.T) {
 		{"song.mp3", "inline"},
 		{"clip.mp4", "inline"},
 		{"my file.txt", "attachment"},
+		{"client.ovpn", "inline"},
 	}
 	for _, tc := range tests {
 		p := filepath.Join(dir, "users", "alice", tc.name)
@@ -1336,6 +1342,9 @@ func TestContentDisposition(t *testing.T) {
 		}
 		if params["filename"] != tc.name {
 			t.Fatalf("%s filename %q", tc.name, params["filename"])
+		}
+		if tc.name == "client.ovpn" && rr.Header().Get("Content-Type") != ovpnProfileType {
+			t.Fatalf("ovpn type %q", rr.Header().Get("Content-Type"))
 		}
 	}
 }
@@ -1373,6 +1382,7 @@ func TestResponseSecurityHeaders(t *testing.T) {
 		httptest.NewRequest(http.MethodGet, "/home/", nil),
 		httptest.NewRequest(http.MethodGet, "/home/a.txt", nil),
 		httptest.NewRequest(http.MethodGet, "/static/style.css", nil),
+		httptest.NewRequest(http.MethodHead, "/openvpn-api/profile", nil),
 	}
 	var missing []string
 	for _, req := range reqs {
@@ -1434,6 +1444,254 @@ func TestLinkRotatesSessionCookie(t *testing.T) {
 	}
 }
 
+func TestOpenVPNProfileImport(t *testing.T) {
+	s, st, dir := testServer(t)
+	head := do(s, httptest.NewRequest(http.MethodHead, "/openvpn-api/profile?embedded=true", nil))
+	if head.Code != http.StatusOK {
+		t.Fatalf("HEAD: %d %s", head.Code, head.Body.String())
+	}
+	if head.Header().Get("Ovpn-WebAuth") != ovpnWebAuth {
+		t.Fatalf("HEAD Ovpn-WebAuth %q", head.Header().Get("Ovpn-WebAuth"))
+	}
+
+	rr := do(s, httptest.NewRequest(http.MethodGet, "/openvpn-api/profile", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET anon: %d %s", rr.Code, rr.Body.String())
+	}
+	if rr.Header().Get("Ovpn-WebAuth") != ovpnWebAuth {
+		t.Fatalf("GET anon Ovpn-WebAuth %q", rr.Header().Get("Ovpn-WebAuth"))
+	}
+	if !strings.Contains(rr.Body.String(), "Sign in with Google") {
+		t.Fatalf("GET anon login: %s", rr.Body.String())
+	}
+	if cookieNamed(rr, s.ovpnImportCookieName()) == nil {
+		t.Fatal("GET anon missing ovpn cookie")
+	}
+
+	rest := do(s, httptest.NewRequest(http.MethodGet, "/rest/GetUserlogin", nil))
+	if rest.Code != http.StatusUnauthorized {
+		t.Fatalf("REST: %d %s", rest.Code, rest.Body.String())
+	}
+	if rest.Header().Get("Ovpn-WebAuth") != ovpnWebAuth {
+		t.Fatalf("REST Ovpn-WebAuth %q", rest.Header().Get("Ovpn-WebAuth"))
+	}
+	if rest.Header().Get("WWW-Authenticate") != "" {
+		t.Fatal("REST must not challenge Basic")
+	}
+	body := rest.Body.String()
+	if !strings.Contains(body, "<Error>") || !strings.Contains(body, "Ovpn-WebAuth: "+ovpnWebAuth) {
+		t.Fatalf("REST xml: %s", body)
+	}
+	auto := do(s, httptest.NewRequest(http.MethodGet, "/rest/GetAutologin", nil))
+	if auto.Code != http.StatusUnauthorized || auto.Header().Get("Ovpn-WebAuth") != ovpnWebAuth {
+		t.Fatalf("GetAutologin: %d %s", auto.Code, auto.Header().Get("Ovpn-WebAuth"))
+	}
+
+	sess, err := st.CreateSession("https://accounts.google.com", "sub-ovpn", "x@y.z", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlinked := &http.Cookie{Name: s.cookieName(), Value: sess.ID}
+	req := httptest.NewRequest(http.MethodGet, "/openvpn-api/profile", nil)
+	req.AddCookie(unlinked)
+	rr = do(s, req)
+	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/link" {
+		t.Fatalf("GET unlinked: %d %s", rr.Code, rr.Header().Get("Location"))
+	}
+
+	c := linkedSession(t, s, st, "alice")
+	req = httptest.NewRequest(http.MethodGet, "/openvpn-api/profile", nil)
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/home/" {
+		t.Fatalf("GET linked empty: %d %s", rr.Code, rr.Header().Get("Location"))
+	}
+	req = httptest.NewRequest(http.MethodGet, "/openvpn-api/profile", nil)
+	req.Header.Set("Accept", "text/html")
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), ".ovpn") {
+		t.Fatalf("html empty: %d %s", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), "openvpn://import-profile/") {
+		t.Fatal("html empty minted a token")
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "users", "alice", "client.ovpn"), []byte("client"), 0660); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/openvpn-api/profile", nil)
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("auto ovpn: %d %s", rr.Code, rr.Body.String())
+	}
+	if rr.Header().Get("Content-Type") != ovpnProfileType {
+		t.Fatalf("auto ovpn type %q", rr.Header().Get("Content-Type"))
+	}
+	if !strings.HasPrefix(rr.Header().Get("Content-Disposition"), "attachment") {
+		t.Fatalf("auto ovpn disposition %q", rr.Header().Get("Content-Disposition"))
+	}
+	if !hasOvpnTitle(rr.Body.String(), "client", "client") {
+		t.Fatalf("auto ovpn body %q", rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/openvpn-api/profile?deviceID=abc&auth=webauth", nil)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Header().Get("Content-Type"), "text/html") {
+		t.Fatalf("html handoff: %d %s", rr.Code, rr.Header().Get("Content-Type"))
+	}
+	page := rr.Body.String()
+	if !strings.Contains(page, "client.ovpn") || !strings.Contains(page, "download=1") {
+		t.Fatalf("html handoff body: %s", page)
+	}
+	if strings.Contains(page, `download="`) {
+		t.Fatal("html handoff must not force a save-only download attribute")
+	}
+	urls := ovpnImportHTTPS(page)
+	if len(urls) != 1 {
+		t.Fatalf("html handoff tokens %d: %s", len(urls), page)
+	}
+	u, err := url.Parse(urls[0])
+	if err != nil || u.Path != "/openvpn-api/profile" || u.Query().Get("token") == "" {
+		t.Fatalf("import url %q: %v", urls[0], err)
+	}
+
+	headTok := do(s, httptest.NewRequest(http.MethodHead, u.RequestURI(), nil))
+	if headTok.Code != http.StatusOK || headTok.Header().Get("Ovpn-WebAuth") != "" {
+		t.Fatalf("token HEAD: %d webauth=%q", headTok.Code, headTok.Header().Get("Ovpn-WebAuth"))
+	}
+	if headTok.Header().Get("Content-Type") != ovpnProfileType {
+		t.Fatalf("token HEAD type %q", headTok.Header().Get("Content-Type"))
+	}
+
+	got := do(s, httptest.NewRequest(http.MethodGet, u.RequestURI(), nil))
+	if got.Code != http.StatusOK || got.Header().Get("Ovpn-WebAuth") != "" {
+		t.Fatalf("token GET: %d webauth=%q %s", got.Code, got.Header().Get("Ovpn-WebAuth"), got.Body.String())
+	}
+	if got.Header().Get("Content-Type") != ovpnProfileType || !hasOvpnTitle(got.Body.String(), "client", "client") {
+		t.Fatalf("token GET %q %q", got.Header().Get("Content-Type"), got.Body.String())
+	}
+	got2 := do(s, httptest.NewRequest(http.MethodGet, u.RequestURI(), nil))
+	if got2.Code != http.StatusOK || !hasOvpnTitle(got2.Body.String(), "client", "client") {
+		t.Fatalf("token GET2: %d %s", got2.Code, got2.Body.String())
+	}
+	got3 := do(s, httptest.NewRequest(http.MethodGet, u.RequestURI(), nil))
+	if got3.Code != http.StatusNotFound {
+		t.Fatalf("token GET3: %d", got3.Code)
+	}
+	miss := do(s, httptest.NewRequest(http.MethodGet, "/openvpn-api/profile?token=deadbeefdeadbeefdeadbeefdeadbeef", nil))
+	if miss.Code != http.StatusNotFound || miss.Header().Get("Ovpn-WebAuth") != "" {
+		t.Fatalf("bad token: %d webauth=%q", miss.Code, miss.Header().Get("Ovpn-WebAuth"))
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/openvpn-api/profile?download=1", nil)
+	req.Header.Set("Accept", "text/html")
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusOK || rr.Header().Get("Content-Type") != ovpnProfileType {
+		t.Fatalf("download=1: %d %s", rr.Code, rr.Header().Get("Content-Type"))
+	}
+	if !strings.HasPrefix(rr.Header().Get("Content-Disposition"), "attachment") {
+		t.Fatalf("download=1 disposition %q", rr.Header().Get("Content-Disposition"))
+	}
+	if !hasOvpnTitle(rr.Body.String(), "client", "client") {
+		t.Fatalf("download=1 body %q", rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/openvpn-api/profile?embedded=true", nil)
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "PROFILE_DOWNLOAD_SUCCESS") {
+		t.Fatalf("embedded: %d %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "client") {
+		t.Fatalf("embedded profile: %s", rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "FRIENDLY_NAME") {
+		t.Fatalf("embedded title: %s", rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/home/client.ovpn", nil)
+	req.Header.Set("Accept", "text/html")
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("ovpn: %d %s", rr.Code, rr.Body.String())
+	}
+	if rr.Header().Get("Content-Type") != ovpnProfileType {
+		t.Fatalf("ovpn type %q", rr.Header().Get("Content-Type"))
+	}
+	if rr.Body.String() != "client" {
+		t.Fatalf("ovpn body %q", rr.Body.String())
+	}
+	if cookieNamed(rr, s.downloadCookieName()) != nil {
+		t.Fatal("inline ovpn should not mark download")
+	}
+
+	if err := os.Remove(filepath.Join(dir, "users", "alice", "client.ovpn")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "users", "alice", "work.ovpn"), []byte("work"), 0660); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "users", "alice", "home.ovpn"), []byte("home"), 0660); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/openvpn-api/profile", nil)
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/home/" {
+		t.Fatalf("several non-html: %d %s", rr.Code, rr.Header().Get("Location"))
+	}
+	req = httptest.NewRequest(http.MethodGet, "/openvpn-api/profile", nil)
+	req.Header.Set("Accept", "text/html")
+	req.AddCookie(c)
+	rr = do(s, req)
+	page = rr.Body.String()
+	if rr.Code != http.StatusOK || !strings.Contains(page, "work.ovpn") || !strings.Contains(page, "home.ovpn") {
+		t.Fatalf("picker: %d %s", rr.Code, page)
+	}
+	if strings.Contains(page, "location.replace") || strings.Contains(page, `id="ovpn-open"`) {
+		t.Fatal("picker must not auto-open")
+	}
+	urls = ovpnImportHTTPS(page)
+	if len(urls) != 2 {
+		t.Fatalf("picker tokens %d: %s", len(urls), page)
+	}
+	bodies := map[string]bool{}
+	for _, raw := range urls {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := do(s, httptest.NewRequest(http.MethodGet, u.RequestURI(), nil))
+		if got.Code != http.StatusOK || got.Header().Get("Ovpn-WebAuth") != "" {
+			t.Fatalf("picker token: %d webauth=%q %s", got.Code, got.Header().Get("Ovpn-WebAuth"), got.Body.String())
+		}
+		bodies[got.Body.String()] = true
+	}
+	var sawWork, sawHome bool
+	for b := range bodies {
+		if hasOvpnTitle(b, "work", "work") {
+			sawWork = true
+		}
+		if hasOvpnTitle(b, "home", "home") {
+			sawHome = true
+		}
+	}
+	if !sawWork || !sawHome {
+		t.Fatalf("picker bodies %v", bodies)
+	}
+
+	rr = do(s, httptest.NewRequest(http.MethodPost, "/openvpn-api/profile", nil))
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST: %d", rr.Code)
+	}
+}
+
 func TestListingShowsDeleteWhenWritable(t *testing.T) {
 	s, st, dir := testServer(t)
 	c := linkedSession(t, s, st, "alice")
@@ -1445,5 +1703,54 @@ func TestListingShowsDeleteWhenWritable(t *testing.T) {
 	rr := do(s, req)
 	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `name="delete"`) {
 		t.Fatalf("home listing: %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestOvpnTicketExpires(t *testing.T) {
+	s, _, _ := testServer(t)
+	id, err := s.putOvpnTicket("alice", "client.ovpn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.ovpnMu.Lock()
+	got := s.ovpnTickets[id]
+	s.ovpnMu.Unlock()
+	if d := time.Until(got.exp); d < 50*time.Second || d > 70*time.Second {
+		t.Fatalf("ttl remaining %s want ~%s", d, ovpnTicketTTL)
+	}
+	s.ovpnMu.Lock()
+	got.exp = time.Now().Add(-time.Second)
+	s.ovpnTickets[id] = got
+	s.ovpnMu.Unlock()
+	if _, ok := s.peekOvpnTicket(id); ok {
+		t.Fatal("peek expired")
+	}
+}
+
+func hasOvpnTitle(body, title, payload string) bool {
+	return strings.Contains(body, "# OVPN_ACCESS_SERVER_FRIENDLY_NAME="+title) &&
+		strings.Contains(body, `setenv FRIENDLY_NAME "`+title+`"`) &&
+		strings.Contains(body, payload)
+}
+
+func ovpnImportHTTPS(page string) []string {
+	const prefix = "openvpn://import-profile/"
+	var out []string
+	rest := page
+	for {
+		i := strings.Index(rest, prefix)
+		if i < 0 {
+			return out
+		}
+		rest = rest[i+len(prefix):]
+		href := rest
+		if j := strings.Index(href, `"`); j >= 0 {
+			href = href[:j]
+			rest = rest[j:]
+		}
+		out = append(out, href)
+		if href == rest {
+			return out
+		}
 	}
 }
