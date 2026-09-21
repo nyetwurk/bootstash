@@ -98,7 +98,7 @@ print_next() {
 # Certbot runs the same hook on issue/renew; this covers install after
 # the cert already exists (otherwise the next renew could be months away).
 # dpkg will not restore a conffile the operator deleted; put the
-# packaged pointer back so the hook can leave a commented CERT_NAME=.
+# packaged pointer back.
 if [ "$1" = configure ]; then
 	if [ ! -f "$op" ] && [ -f /usr/lib/bootstash/default ]; then
 		install -m 0644 /usr/lib/bootstash/default "$op"

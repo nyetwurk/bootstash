@@ -2,36 +2,56 @@
 # Copyright (C) 2026 Nye Liu
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Certbot deploy hook. Copies one chosen lineage out of
-# /etc/letsencrypt/live into /etc/bootstash/certs/<name>.
-# Not an ACME client. Does not copy every live/ cert.
-# TLS=no: do not copy; remove dest PEMs (unused private key).
-# live/ is untouched.
+# Certbot deploy hook. Copies one lineage from live/ into
+# /etc/bootstash/certs/<name>. Not an ACME client.
 #
-#   (no args)  RENEWED_LINEAGE if it is the chosen name
+#   (no args)  RENEWED_LINEAGE if it is the chosen name, or
+#              already installed under certs/ when no name is chosen
 #   sync       copy the chosen live/ lineage (package configure)
 #
 # Chosen name, in order: CERT_NAME, PUBLIC_URL host,
-# live/$(hostname -f), the only live/ lineage. An existing dest
-# dir is also wanted (opt-in). PUBLIC_URL in the daemon
-# defaults from that name.
+# live/$(hostname -f), the only live/ lineage.
+#
+# TLS=no: do not copy; remove dest PEMs (unused private key).
+# live/ is untouched. Does not rewrite the operator file.
 set -eu
 
-[ -d /etc/bootstash ] || exit 0
-getent group bootstash >/dev/null 2>&1 || exit 0
+etc=${BOOTSTASH_ETC:-/etc/bootstash}
+op=${BOOTSTASH_DEFAULT:-/etc/default/bootstash}
+live=${BOOTSTASH_LIVE:-/etc/letsencrypt/live}
+certs=$etc/certs
+group=${BOOTSTASH_GROUP:-bootstash}
+fqdn=${BOOTSTASH_FQDN:-$(hostname -f 2>/dev/null || true)}
 
-certs=/etc/bootstash/certs
-op=/etc/default/bootstash
-fqdn=$(hostname -f 2>/dev/null || true)
-live=/etc/letsencrypt/live
+# Production: missing tree or group means this box is not ready.
+# Tests set BOOTSTASH_ETC and skip that gate.
+if [ -z "${BOOTSTASH_ETC+x}" ]; then
+	[ -d "$etc" ] || exit 0
+	getent group "$group" >/dev/null 2>&1 || exit 0
+fi
 
+# Certbot deploy hooks (keep stderr empty unless we want a warning):
+#   exit != 0  → WARNING "reported error code" (real failure; set -e)
+#   anything on stderr → WARNING "ran with error output" even on exit 0
+#   stdout     → "ran with output" (not a warning)
+# Merge this shell's stderr into stdout so log lines and
+# `systemctl reload` are visible without looking like an error.
+# `exec 2>&1 | logger` does not do that: the pipe only covers that
+# one command.
+exec 2>&1
+
+log() {
+	echo "bootstash: $*"
+}
+
+# Last uncommented KEY=value.
 last_key() {
 	key=$1
 	[ -r "$op" ] || return 0
 	val=
 	while IFS= read -r line || [ -n "$line" ]; do
 		case $line in
-		''|'#'*) continue ;;
+		'' | '#'*) continue ;;
 		esac
 		k=${line%%=*}
 		v=${line#*=}
@@ -44,17 +64,20 @@ last_key() {
 }
 
 tls_off() {
-	tls=$(last_key TLS)
-	tls=$(printf '%s' "$tls" | tr 'A-Z' 'a-z')
-	case $tls in
+	v=$(printf '%s' "$(last_key TLS)" | tr 'A-Z' 'a-z')
+	case $v in
 	0 | false | no | off) return 0 ;;
 	esac
-	# Unset, auto/maybe, yes/true/on/1, or unknown: do not purge.
 	return 1
 }
 
-# Dest PEMs are 0640 root:bootstash. If the daemon is not speaking
-# HTTPS, do not leave privkey.pem there. Skip symlinks. live/ stays.
+safe_name() {
+	case $1 in
+	'' | . | .. | *[!A-Za-z0-9.-]*) return 1 ;;
+	esac
+	return 0
+}
+
 purge_dest_certs() {
 	[ -d "$certs" ] || return 0
 	for d in "$certs"/*; do
@@ -62,12 +85,10 @@ purge_dest_certs() {
 		[ -L "$d" ] && continue
 		[ -d "$d" ] || continue
 		name=$(basename "$d")
-		case $name in
-		'' | . | .. | *[!A-Za-z0-9.-]*) continue ;;
-		esac
+		safe_name "$name" || continue
 		if [ -e "$d/fullchain.pem" ] || [ -e "$d/privkey.pem" ]; then
 			rm -f "$d/fullchain.pem" "$d/privkey.pem"
-			echo "bootstash: removed PEMs in $d (TLS=no; unused private key)" >&2
+			log "removed PEMs in $d (TLS=no; unused private key)"
 		fi
 		rmdir "$d" 2>/dev/null || true
 	done
@@ -91,61 +112,6 @@ origin_host() {
 	printf '%s' "$u"
 }
 
-# First uncommented LISTEN= (same order as the daemon).
-first_listen() {
-	file=$1
-	[ -r "$file" ] || return 0
-	while IFS= read -r line || [ -n "$line" ]; do
-		case $line in
-		'' | '#'*) continue ;;
-		esac
-		k=${line%%=*}
-		k=$(printf '%s' "$k" | tr -d ' \t')
-		[ "$k" = LISTEN ] || continue
-		v=${line#*=}
-		v=$(printf '%s' "$v" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^"//;s/"$//;s/^'\''//;s/'\''$//')
-		printf '%s' "$v"
-		return 0
-	done <"$file"
-}
-
-# Same as config.derivePublicURL: CERT_NAME host, first TCP LISTEN
-# (else default-dist / 8080), https if the dest pair exists (unless
-# TLS=no), omit
-# 80 and 443.
-derived_public_url() {
-	host=$1
-	[ -n "$host" ] || return 0
-	bind=$(first_listen "$op")
-	[ -n "$bind" ] || bind=$(first_listen /usr/lib/bootstash/default-dist)
-	[ -n "$bind" ] || bind=127.0.0.1:8080
-	port=
-	case $bind in
-	unix:* | unix@*) ;;
-	'['*)
-		rest=${bind#*]}
-		port=${rest#:}
-		;;
-	*:*)
-		port=${bind##*:}
-		;;
-	esac
-	case $port in
-	'' | *[!0-9]*) return 0 ;;
-	esac
-	scheme=http
-	if ! tls_off; then
-		if [ -f "$certs/$host/fullchain.pem" ] && [ -f "$certs/$host/privkey.pem" ]; then
-			scheme=https
-		fi
-	fi
-	if { [ "$scheme" = http ] && [ "$port" = 80 ]; } || { [ "$scheme" = https ] && [ "$port" = 443 ]; }; then
-		printf '%s://%s' "$scheme" "$host"
-		return 0
-	fi
-	printf '%s://%s:%s' "$scheme" "$host" "$port"
-}
-
 list_live() {
 	[ -d "$live" ] || return 0
 	for d in "$live"/*; do
@@ -159,8 +125,6 @@ list_live() {
 
 cert_name=$(last_key CERT_NAME)
 origin=$(origin_host)
-
-# One name. Empty if we will not guess (several live/ lineages).
 chosen=
 how=
 if [ -n "$cert_name" ]; then
@@ -175,10 +139,13 @@ elif [ -n "$fqdn" ] && [ -f "$live/$fqdn/fullchain.pem" ]; then
 else
 	n=0
 	only=
-	for name in $(list_live); do
+	while IFS= read -r name || [ -n "$name" ]; do
+		[ -n "$name" ] || continue
 		n=$((n + 1))
 		only=$name
-	done
+	done <<EOF
+$(list_live)
+EOF
 	if [ "$n" = 1 ]; then
 		chosen=$only
 		how='only live/ lineage'
@@ -189,148 +156,65 @@ wanted() {
 	name=$1
 	[ -n "$name" ] || return 1
 	[ -n "$chosen" ] && [ "$name" = "$chosen" ] && return 0
-	[ -d "$certs/$name" ] && return 0
-	return 1
+	# No chosen name: keep an already-installed dest fresh on renew.
+	[ -z "$chosen" ] && [ -f "$certs/$name/fullchain.pem" ] && [ -f "$certs/$name/privkey.pem" ]
+}
+
+install_pair() {
+	src=$1
+	dest=$2
+	if [ "$(id -u)" = 0 ] && getent group "$group" >/dev/null 2>&1; then
+		install -d -m 0750 -o root -g "$group" "$certs"
+		install -d -m 0750 -o root -g "$group" "$dest"
+		install -m 0640 -o root -g "$group" "$src/fullchain.pem" "$dest/fullchain.pem"
+		install -m 0640 -o root -g "$group" "$src/privkey.pem" "$dest/privkey.pem"
+		return 0
+	fi
+	install -d -m 0750 "$certs"
+	install -d -m 0750 "$dest"
+	install -m 0640 "$src/fullchain.pem" "$dest/fullchain.pem"
+	install -m 0640 "$src/privkey.pem" "$dest/privkey.pem"
 }
 
 deploy_lineage() {
 	lineage=$1
 	name=$(basename "$lineage")
-	[ -n "$name" ] && [ "$name" != . ] && [ "$name" != .. ] || return 1
+	safe_name "$name" || return 1
 	[ -f "$lineage/fullchain.pem" ] && [ -f "$lineage/privkey.pem" ] || return 1
 	wanted "$name" || return 1
-	install -d -m 0750 -o root -g bootstash "$certs"
-	install -d -m 0750 -o root -g bootstash "$certs/$name"
-	install -m 0640 -o root -g bootstash "$lineage/fullchain.pem" "$certs/$name/fullchain.pem"
-	install -m 0640 -o root -g bootstash "$lineage/privkey.pem" "$certs/$name/privkey.pem"
+	install_pair "$lineage" "$certs/$name"
 	why=$how
-	[ -n "$why" ] || why='existing dest'
-	echo "bootstash: copied $lineage -> $certs/$name ($why)" >&2
-	return 0
+	[ -n "$why" ] || why='already in certs/'
+	log "copied $lineage -> $certs/$name ($why)"
 }
 
 maybe_reload() {
+	[ -z "${BOOTSTASH_ETC+x}" ] || return 0
 	if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet bootstash; then
 		systemctl reload bootstash || true
 	fi
 }
 
-# Insert commented CERT_NAME= and PUBLIC_URL= hints after the
-# packaged header when we detected the name (only lineage or
-# hostname -f). PUBLIC_URL is what the daemon would derive.
-# Runtime still decides unless the operator uncomments. Do not
-# rewrite operator keys. provision-google still does not touch
-# this file.
-persist_cert_name() {
-	[ -n "$chosen" ] || return 0
-	case $how in
-	'only live/ lineage' | 'hostname -f') ;;
-	*) return 0 ;;
-	esac
-	[ -z "$(last_key CERT_NAME)" ] || return 0
-	if [ ! -f "$op" ]; then
-		if [ -f /usr/lib/bootstash/default ]; then
-			install -m 0644 /usr/lib/bootstash/default "$op"
-		else
-			install -d -m 0755 /etc/default
-			: >"$op"
-		fi
-	fi
-	if grep -q '^# Detected by letsencrypt-deploy' "$op" 2>/dev/null; then
-		return 0
-	fi
-	case $chosen in
-	'' | *[!A-Za-z0-9.-]*)
-		echo "bootstash: not writing CERT_NAME hint (unsafe name)" >&2
-		return 0
-		;;
-	esac
-	url=
-	if [ -z "$(last_key PUBLIC_URL)" ]; then
-		url=$(derived_public_url "$chosen")
-	fi
-	tmp=$op.tmp.$$
-	hdr=$tmp.hdr
-	body=$tmp.body
-	: >"$hdr"
-	: >"$body"
-	have_hdr=0
-	phase=hdr
-	while IFS= read -r line || [ -n "$line" ]; do
-		if [ "$phase" = hdr ]; then
-			case $line in
-			'# See bootstash(5)'* | '# Add only overrides.'* | '# OIDC:'*)
-				printf '%s\n' "$line" >>"$hdr"
-				have_hdr=1
-				continue
-				;;
-			'#' | '# ')
-				if [ "$have_hdr" = 1 ]; then
-					printf '%s\n' "$line" >>"$hdr"
-					phase=body
-					continue
-				fi
-				;;
-			esac
-			phase=body
-		fi
-		if [ -n "$url" ] && [ "$line" = '# PUBLIC_URL=' ]; then
-			continue
-		fi
-		printf '%s\n' "$line" >>"$body"
-	done <"$op"
-	{
-		cat "$hdr"
-		printf '# Detected by letsencrypt-deploy (%s). Uncomment to pin.\n# CERT_NAME=%s\n' "$how" "$chosen"
-		if [ -n "$url" ]; then
-			printf '# PUBLIC_URL=%s\n' "$url"
-		fi
-		printf '\n'
-		cat "$body"
-	} >"$tmp"
-	chmod --reference="$op" "$tmp" 2>/dev/null || chmod 0644 "$tmp"
-	rm -f "$hdr" "$body"
-	mv "$tmp" "$op"
-	if [ -n "$url" ]; then
-		echo "bootstash: wrote commented CERT_NAME=$chosen PUBLIC_URL=$url in $op (runtime still decides)" >&2
-	else
-		echo "bootstash: wrote commented CERT_NAME=$chosen in $op (runtime still decides)" >&2
-	fi
-}
-
 sync_live() {
 	if [ -n "$chosen" ]; then
-		echo "bootstash: CERT_NAME=$chosen ($how)" >&2
+		log "using $chosen ($how)"
+		deploy_lineage "$live/$chosen" && return 0
 	fi
-	copied=0
-	if [ -d "$live" ]; then
-		for d in "$live"/*; do
-			[ -d "$d" ] || continue
-			if deploy_lineage "$d"; then
-				copied=$((copied + 1))
-			fi
-		done
-	fi
-	if [ "$copied" -gt 0 ]; then
-		persist_cert_name
-		return 0
-	fi
-	echo "bootstash: no live/ lineage to copy (hostname -f=${fqdn:-unset} CERT_NAME=${cert_name:-unset} PUBLIC_URL host=${origin:-unset})" >&2
+	log "no live/ lineage to copy (hostname -f=${fqdn:-unset} CERT_NAME=${cert_name:-unset} PUBLIC_URL host=${origin:-unset})"
 	avail=$(list_live | tr '\n' ' ')
 	if [ -n "$avail" ]; then
-		echo "bootstash: live/ has: $avail" >&2
-		echo "bootstash: set CERT_NAME=<lineage> in $op (several lineages; will not guess)" >&2
+		log "live/ has: $avail"
+		log "set CERT_NAME=<lineage> in $op (several lineages; will not guess)"
 	elif [ ! -d "$live" ]; then
-		echo "bootstash: no $live" >&2
+		log "no $live"
 	else
-		echo "bootstash: no lineages in $live" >&2
+		log "no lineages in $live"
 	fi
 }
 
 if tls_off; then
-	echo "bootstash: TLS=no; not copying live/ into $certs" >&2
+	log "TLS=no; not copying live/ into $certs"
 	purge_dest_certs
-	persist_cert_name
 	maybe_reload
 	exit 0
 fi
@@ -344,6 +228,5 @@ fi
 lineage=${RENEWED_LINEAGE:-}
 [ -n "$lineage" ] || exit 0
 if deploy_lineage "$lineage"; then
-	persist_cert_name
 	maybe_reload
 fi

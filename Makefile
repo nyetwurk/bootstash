@@ -30,6 +30,7 @@ $(BINDIR)/bootstash-pam: FORCE | $(BINDIR)
 
 test:
 	go test ./...
+	python3 scripts/test-letsencrypt-deploy.py
 
 fmt:
 	gofmt -w $(shell find . -name '*.go' -not -path './debian/*')

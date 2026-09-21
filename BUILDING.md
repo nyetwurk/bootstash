@@ -10,7 +10,7 @@ releases: [`RELEASE.md`](RELEASE.md).
 ```
 make          # bin/bootstashd (PAM), bin/bootstash-pam (setuid helper),
               # and bin/bootstash (CGO_ENABLED=0)
-make test
+make test       # go test ./... ; python3 scripts/test-letsencrypt-deploy.py
 make copyright  # refresh Go module list in debian/copyright
 make packages   # all shipped archives (today: make deb)
 make deb        # debian/changelog + dpkg-buildpackage -b → packages/

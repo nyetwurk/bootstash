@@ -5,7 +5,8 @@ Maintainer: nyet <nyet@nyet.org>
 Build-Depends:
  debhelper-compat (= 13),
  golang-go (>= 2:1.27~),
- libpam0g-dev
+ libpam0g-dev,
+ python3
 Standards-Version: 4.7.2
 Homepage: https://github.com/nyet/bootstash
 Vcs-Git: https://github.com/nyet/bootstash.git
