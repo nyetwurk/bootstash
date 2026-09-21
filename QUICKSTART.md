@@ -47,19 +47,20 @@ file; do not paste them into `/etc/default/bootstash`.
 
 ## Config
 
-`/etc/default/bootstash` ships with commented `DATA`, `LISTEN`,
-`PUBLIC_URL`, and `ADMIN_USERS`. Add only what you need to change.
-Packaged operator keys stay in `/usr/lib/bootstash/default-dist`.
-OIDC client id/secret and `OIDC_CRYPTO` are not in that file.
+`/etc/default/bootstash` is created on install with commented `DATA`,
+`LISTEN`, `PUBLIC_URL`, and `ADMIN_USERS`. Add only what you need to
+change. It is not a conffile: `dpkg` will not ask you to merge a new
+packaged copy over your edits. Packaged operator keys stay in
+`/usr/lib/bootstash/default-dist`. OIDC client id/secret and
+`OIDC_CRYPTO` are not in that file.
 
 Configure runs `letsencrypt-deploy sync`, which copies one matching
 `live/` lineage into `/etc/bootstash/certs/<name>/`. The daemon
 derives `CERT_NAME` and `PUBLIC_URL` from that dest. Write those keys
 to pin them.
 
-If you delete the conffile, `dpkg -i` will not put it back. Configure
-restores the packaged pointer from `/usr/lib/bootstash/default`, or
-use `dpkg --force-confmiss -i`.
+If you delete the operator file, `dpkg -i` will not put it back.
+Configure restores the packaged pointer from `/usr/lib/bootstash/default`.
 
 ## Listen
 
