@@ -166,7 +166,8 @@ will send). Reload after changing `PUBLIC_URL` or installing
 - Extra DNS names are a second origin. HTTPS cookies are `__Host-`
   and do not follow Apache `ServerAlias`. A separate vhost should
   `Redirect` to `PUBLIC_URL` (see
-  `/usr/share/doc/bootstash/examples/apache-vhost.conf`)
+  `/usr/share/doc/bootstash/examples/apache-vhost.conf` and
+  QUICKSTART Origin models)
 - Sign-in page **Sign-in expired**: `PUBLIC_URL` scheme does not
   match how you reach the daemon (`https` uses `__Host-` cookies,
   which browsers refuse on HTTP), or you switched hostname
@@ -213,9 +214,10 @@ sends the new URI.
 ## Known issues
 
 `/etc/bootstash/certs/` is hook-managed. `letsencrypt-deploy` copies
-Let’s Encrypt `live/` into `certs/<name>/`. Do not put your own PEMs
-there: an existing dest dir is treated as wanted, so a later
-`live/<name>` renew can overwrite them.
+one Let’s Encrypt `live/` lineage into `certs/<name>/`. Do not put
+your own PEMs there: a later `live/<name>` renew can refresh dest
+PEMs (the chosen lineage, or a dest that already exists when no
+name is chosen).
 
 With no Let’s Encrypt lineage, `certs/` may be empty. That is HTTP
 unless you set `TLS_CERT` / `TLS_KEY`.

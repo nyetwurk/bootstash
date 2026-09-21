@@ -49,13 +49,13 @@ file; do not paste them into `/etc/default/bootstash`.
 
 `/etc/default/bootstash` ships with commented `DATA`, `LISTEN`,
 `PUBLIC_URL`, and `ADMIN_USERS`. Add only what you need to change.
-Packaged values stay in `/usr/lib/bootstash/default-dist` (every key).
+Packaged operator keys stay in `/usr/lib/bootstash/default-dist`.
+OIDC client id/secret and `OIDC_CRYPTO` are not in that file.
 
-If configure finds a single Let’s Encrypt `live/` lineage, or
-`live/$(hostname -f)`, it inserts commented `# CERT_NAME=` and
-`# PUBLIC_URL=` after the file header. Those hints are the URL the
-daemon would derive. The daemon still derives both at runtime unless
-you uncomment them.
+Configure runs `letsencrypt-deploy sync`, which copies one matching
+`live/` lineage into `/etc/bootstash/certs/<name>/`. The daemon
+derives `CERT_NAME` and `PUBLIC_URL` from that dest. Write those keys
+to pin them.
 
 If you delete the conffile, `dpkg -i` will not put it back. Configure
 restores the packaged pointer from `/usr/lib/bootstash/default`, or
@@ -88,16 +88,55 @@ forces HTTP.
 
 That name must resolve and reach this daemon. If you bind only a
 tunnel NIC but the origin is a public `:443` vhost, the callback
-misses. The same origin (not a file path) is what a road warrior
-pastes into OpenVPN Connect (URL import). `.ovpn` files already in
-the cubby are what that import opens.
+misses.
 
-One `PUBLIC_URL` host. HTTPS cookies are host-only; do not
-`ServerAlias` the proxy vhost. Redirect extra names to
-`PUBLIC_URL` (sample:
-`/usr/share/doc/bootstash/examples/apache-vhost.conf`).
 Google sign-in errors:
 [`README.md`](README.md#oidc-troubleshooting).
+
+## Origin models
+
+One `PUBLIC_URL`. OpenVPN Connect pastes that HTTPS origin, not a
+file path and not `remote` unless those names are the same.
+`.ovpn` files already in the cubby are what that import opens.
+Extra DNS names `Redirect` only. Do not `ProxyPass` two names.
+Do not `ServerAlias`. HTTPS cookies are host-only. Sample vhost is
+layout A (`/usr/share/doc/bootstash/examples/apache-vhost.conf`).
+
+- **A — cubby origin.** `PUBLIC_URL=https://bootstash.example`.
+  Browser and Connect talk to that host. OpenVPN `remote` is a
+  different name (`vpn.example` UDP). Extra names (`bs`) 301 to
+  bootstash
+- **B — VPN origin.** `PUBLIC_URL=https://vpn.example`. That name
+  is the proxy `ServerName`. Extra cubby names 301 **to vpn**.
+  Connect pastes vpn. Tunnel is still `remote vpn` UDP. Apache
+  owns 443. OpenVPN must **not** listen on TCP 443
+
+Not a model: OpenVPN TCP on 443 and Apache on the same address.
+Two `ProxyPass` origins. `ServerAlias`. 301 from vpn onto a
+different cubby host (Connect’s probe follows and drops
+`Ovpn-WebAuth`).
+
+```mermaid
+flowchart LR
+  A["A cubby origin<br/>PUBLIC_URL = bootstash.example<br/>OpenVPN remote = vpn.example UDP<br/>extra names 301 to bootstash"]
+  B["B VPN origin<br/>PUBLIC_URL = vpn.example<br/>OpenVPN remote = vpn.example UDP<br/>extra names 301 to vpn<br/>OpenVPN not on TCP 443"]
+```
+
+A 301 from the pasted host onto another name is the same class of
+failure as a 302 to `/login`:
+
+```mermaid
+sequenceDiagram
+  participant Connect
+  participant vpn as vpn.example
+  participant cubby as bootstash.example
+  Connect->>vpn: HEAD /openvpn-api/profile
+  vpn-->>Connect: 301 to cubby
+  Note over Connect: follows redirect, drops Ovpn-WebAuth
+  Connect->>cubby: HEAD /openvpn-api/profile
+  cubby-->>Connect: 200 Ovpn-WebAuth
+  Note over Connect: WebAuth never starts
+```
 
 ## TLS and Let’s Encrypt
 
@@ -109,7 +148,8 @@ when both exist:
 
 `name` is `CERT_NAME`. If that is unset, the hook picks:
 
-- `live/$(hostname -f)`, or
+- `PUBLIC_URL` host
+- `live/$(hostname -f)`
 - the **only** `live/` lineage (it will not guess when there are several)
 
 After the copy, the daemon uses that directory as `CERT_NAME` and
@@ -141,7 +181,7 @@ one** lineage, not every cert on the box.
   Unrelated lineages are skipped. `TLS=no` skips the copy and
   removes dest PEMs. Do not run it on a timer
 - **Install and upgrade:** `letsencrypt-deploy sync`. One lineage on
-  the box is enough; several lineages and no `CERT_NAME` **prints**
+  the box is enough; several lineages and no chosen name **prints**
   the list. `TLS=no` removes dest PEMs instead of copying
 - **Force a name:** `CERT_NAME=stash.example` in
   `/etc/default/bootstash`, then

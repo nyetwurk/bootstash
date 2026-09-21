@@ -30,10 +30,11 @@ README “Expectations.”
   `TLS_CERT` / `TLS_KEY` or `/etc/bootstash/certs/<CERT_NAME>/` when
   both PEMs exist, otherwise HTTP. `TLS=no`: HTTP on TCP binds; the
   hook does not copy `live/` and removes dest PEMs under `certs/`
-  (unused private key; `live/` stays). `PUBLIC_URL` defaults from
-  `CERT_NAME` (hook picks the only `live/` lineage when unset;
-  `http` when `TLS=no`). Do not read `/etc/letsencrypt/live`. Never
-  copy every `live/` cert.
+  (unused private key; `live/` stays). Hook pick order: operator
+  `CERT_NAME`, `PUBLIC_URL` host, `live/$(hostname -f)`, or the only
+  `live/` lineage. No rewrite of `/etc/default/bootstash`.
+  `PUBLIC_URL` defaults from dest `CERT_NAME` (`http` when `TLS=no`).
+  Do not read `/etc/letsencrypt/live`. Never copy every `live/` cert.
 - Not `/etc/bootstash.d/`. Not systemd `EnvironmentFile=` or empty
   `ConfigurationDirectory=`
 - `ADMIN_USERS` is a PAM-name seam with **no extra HTTP powers** in v1
@@ -42,10 +43,11 @@ README “Expectations.”
 
 Load order: built-in (embed of `internal/config/default-dist`) /
 `/usr/lib/bootstash/default-dist` (not a
-conffile; **every** key, including empty/derived), then
+conffile; packaged operator keys, including empty/derived; not OIDC
+client id/secret or `OIDC_CRYPTO`), then
 `/etc/default/bootstash` (conffile; `0644` `root:root` like other
 `/etc/default` files; commented `DATA`, `LISTEN`,
-`PUBLIC_URL`, `ADMIN_USERS`; operator diffs), then
+`PUBLIC_URL`, `ADMIN_USERS`; operator diffs; never OIDC secrets), then
 `/etc/bootstash/oidc-google.json` (helper-written; not a
 conffile). Later scalars win. If the operator file mentions `LISTEN` at
 all, those lines replace the packaged listen list. Secrets **cannot**
@@ -63,18 +65,15 @@ config**. Same for a bad TLS pair (keep the previous cert).
 The hook (root, can read `live/`) chooses one lineage, in order:
 operator `CERT_NAME`, `PUBLIC_URL` host, `live/$(hostname -f)`, or
 the only `live/` lineage. It copies that one directory
-unless `TLS=no` (then it removes dest PEMs under `certs/`). It may
-insert commented `# CERT_NAME=` and `# PUBLIC_URL=`
-hints after the operator-file header (`hostname -f` or only
-lineage). `PUBLIC_URL` is the value the daemon would derive. The daemon still derives both
-unless the operator uncomments them. The hook does not rewrite
-operator keys. The daemon cannot read `live/`; it treats an
-explicit `CERT_NAME`, `certs/$(hostname -f)`, or the only
+unless `TLS=no` (then it removes dest PEMs under `certs/`). It does
+not rewrite the operator file. The daemon cannot read `live/`; it
+treats an explicit `CERT_NAME`, `certs/$(hostname -f)`, or the only
 `certs/<name>/` pair as `CERT_NAME`. If `PUBLIC_URL` is unset,
 it is `http(s)://$CERT_NAME:port`, else `hostname -f`. Omit ports
 80 and 443. Do not use `localhost`. Several `live/` lineages and
-no `CERT_NAME`: `sync` prints the list and copies nothing. No FQDN
-alias. Operators do not cron the hook.
+no chosen name: `sync` prints the list and copies nothing. A renew
+of a name already in `certs/` still refreshes those PEMs when no
+name is chosen. No FQDN alias. Operators do not cron the hook.
 
 ## Process
 
@@ -98,7 +97,9 @@ Do not rewrite the request from `X-Forwarded-Proto` /
 cookies). A reverse proxy must set `PUBLIC_URL` to the URL the
 browser uses; `Host` on the backend socket does not matter.
 One origin. Extra DNS names `Redirect` at the proxy; do not
-`ProxyPass` two names onto the same daemon.
+`ProxyPass` two names onto the same daemon. Layouts A (cubby
+host) and B (VPN host), and why a 301 off `PUBLIC_URL` drops
+Connect’s `Ovpn-WebAuth`: [`QUICKSTART.md`](QUICKSTART.md#origin-models).
 
 ## Listen
 
@@ -263,4 +264,6 @@ session rotate on `/link`, relink drops other sessions, oauth login
 cap, response headers, GET `/home` login redirect, HTML 404 / login-fail
 pages, `.ovpn` MIME, HEAD `/openvpn-api/profile`, REST `Ovpn-WebAuth`
 bounce, import `?token=` (no session, no `Ovpn-WebAuth`, titled
-`remote [filename]`), picker HTML, `mime.types` parse.
+`remote [filename]`), picker HTML, `mime.types` parse,
+`scripts/test-letsencrypt-deploy.py` (pick order, `TLS=no` purge,
+renew of an already-installed dest).

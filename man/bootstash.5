@@ -10,7 +10,7 @@ bootstash \- operator config, dist defaults, and OIDC secrets
 .SH DESCRIPTION
 bootstashd reads dist defaults
 .RI ( /usr/lib/bootstash/default-dist ;
-every key, including empty/derived),
+packaged operator keys, including empty/derived; not OIDC),
 then
 .IR /etc/default/bootstash ,
 then
@@ -121,6 +121,8 @@ Extra DNS names must
 .B Redirect
 here; do not proxy the same backend on two names.
 See
+.IR /usr/share/doc/bootstash/QUICKSTART.md
+(Origin models) and
 .IR /usr/share/doc/bootstash/examples .
 .TP
 .B LISTEN
@@ -205,8 +207,10 @@ Let’s Encrypt lineage / directory under
 .IR /etc/bootstash/certs .
 When unset, the hook (which can read
 .IR live/ )
-chooses
-.BR live/ $(hostname -f)
+chooses the
+.B PUBLIC_URL
+host,
+.BR live/ $(hostname -f),
 or the only
 .I live/
 lineage; the daemon then sees that
@@ -214,19 +218,23 @@ lineage; the daemon then sees that
 pair.
 .B TLS=no
 skips that copy and removes dest PEMs.
-Several lineages and no
-.B CERT_NAME
-:
+Several lineages and no chosen name
+.RB ( CERT_NAME ,
+.B PUBLIC_URL
+host, or
+.BR hostname \-f
+match):
 .B sync
 prints the list and copies nothing.
-A successful detect inserts
-commented
-.B CERT_NAME=
+A name already in
+.I certs/
+is still refreshed on renew when no name is chosen.
+The hook does not rewrite the operator file; the daemon
+derives
+.B CERT_NAME
 and
-.B PUBLIC_URL=
-hints (the URL the daemon would derive; does not rewrite
-operator keys). The daemon still derives both unless those
-lines are uncommented.
+.B PUBLIC_URL
+at runtime.
 Not an ACME client.
 .TP
 .B DATA
@@ -255,24 +263,30 @@ See
 .TP
 .B OIDC_GOOGLE_CLIENT_ID / OIDC_GOOGLE_CLIENT_SECRET
 Google web OAuth client. Client ID is required to start.
-These keys may appear in
-.I /etc/default/bootstash .
-The secrets file
+Do not put these in
+.I /etc/default/bootstash
+or
+.I /usr/lib/bootstash/default-dist
+(those files are
+.BR 0644 ).
+They come from
 .I /etc/bootstash/oidc-google.json
-is the JSON the Google console downloads
-.RB ( web.client_id
+(the JSON the Google console downloads:
+.B web.client_id
 /
 .BR web.client_secret ).
 .B bootstash provision-google
 installs that file
 .RB ( 0640
 .BR root:bootstash ).
-JSON secrets win if both are set. A KEY=value secrets file is still
-read.
+A KEY=value secrets file is still read.
 .TP
 .B OIDC_CRYPTO
-Optional HMAC key (at least 32 bytes, or hex). If unset, a key is created
-under
+Optional HMAC key (at least 32 bytes, or hex). Do not put this in
+.I /etc/default/bootstash
+or
+.IR /usr/lib/bootstash/default-dist .
+If unset, a key is created under
 .IR $DATA/state/crypto.key .
 .TP
 .B PAM_SERVICE
