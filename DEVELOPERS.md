@@ -47,9 +47,11 @@ Load order: built-in (embed of `internal/config/default-dist`) /
 `/usr/lib/bootstash/default-dist` (not a
 conffile; packaged operator keys, including empty/derived; not OIDC
 client id/secret or `OIDC_CRYPTO`), then
-`/etc/default/bootstash` (conffile; `0644` `root:root` like other
+`/etc/default/bootstash` (not a conffile; created on configure from
+`/usr/lib/bootstash/default` if missing; `0644` `root:root` like other
 `/etc/default` files; commented `DATA`, `LISTEN`,
-`PUBLIC_URL`, `ADMIN_USERS`; operator diffs; never OIDC secrets), then
+`PUBLIC_URL`, `ADMIN_USERS`; operator diffs; never OIDC secrets;
+`dpkg` does not merge a new packaged copy over edits), then
 `/etc/bootstash/oidc-google.json` (helper-written; not a
 conffile). Later scalars win. If the operator file mentions `LISTEN` at
 all, those lines replace the packaged listen list. Secrets **cannot**

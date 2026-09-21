@@ -97,8 +97,8 @@ print_next() {
 # Copy any already-issued Let's Encrypt lineage the daemon can use.
 # Certbot runs the same hook on issue/renew; this covers install after
 # the cert already exists (otherwise the next renew could be months away).
-# dpkg will not restore a conffile the operator deleted; put the
-# packaged pointer back.
+# Operator file is not a conffile. Create it from the packaged
+# template if missing (first install, or the operator deleted it).
 if [ "$1" = configure ]; then
 	if [ ! -f "$op" ] && [ -f /usr/lib/bootstash/default ]; then
 		install -m 0644 /usr/lib/bootstash/default "$op"

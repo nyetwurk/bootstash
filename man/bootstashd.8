@@ -186,17 +186,22 @@ daemon execs it for
 Not on
 .BR PATH .
 .TP
+.I /usr/lib/bootstash/default
+Operator-file template (not a conffile). Configure copies it to
+.I /etc/default/bootstash
+if that path is missing.
+.TP
 .I /etc/default/bootstash
 Operator config
 .RB ( 0644
 .BR root:root );
-commented
+not a conffile. Commented
 .BR DATA ,
 .BR LISTEN ,
 .BR PUBLIC_URL ,
 and
 .BR ADMIN_USERS
-on install. See
+on first create. See
 .BR bootstash (5).
 .TP
 .I /etc/bootstash/oidc-google.json

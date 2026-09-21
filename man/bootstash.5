@@ -27,21 +27,24 @@ append to each other). The secrets file cannot change
 .BR LISTEN .
 .PP
 .I /etc/default/bootstash
-is a conffile and ships with commented
+is not a conffile.
+Configure creates it from
+.I /usr/lib/bootstash/default
+if the path is missing (commented
 .BR DATA ,
 .BR LISTEN ,
 .BR PUBLIC_URL ,
 and
-.BR ADMIN_USERS .
+.BR ADMIN_USERS ).
+.B dpkg
+does not prompt to merge a new packaged copy over operator edits.
 Add only keys that differ from
 .IR /usr/lib/bootstash/default-dist .
 Do not copy the full dist file into
 .IR /etc/default/bootstash .
 .B bootstash provision-google
 does not write this file.
-If the operator deletes this conffile,
-.B dpkg
-will not restore it;
+If the operator deletes this file,
 configure copies
 .I /usr/lib/bootstash/default
 back if the path is missing. It does not enable the unit.
@@ -346,6 +349,12 @@ Not a Unix group and not an application user table.
 Operator overrides
 .RB ( 0644
 .BR root:root ).
+Not a conffile; created from
+.I /usr/lib/bootstash/default
+if missing.
+.TP
+.I /usr/lib/bootstash/default
+Operator-file template (not a conffile).
 .TP
 .I /etc/bootstash
 Directory for helper-written secrets and copied TLS files

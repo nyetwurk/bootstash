@@ -1,0 +1,11 @@
+#!/bin/sh
+# Copyright (C) 2026 Nye Liu
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -e
+
+#DEBHELPER#
+
+# Operator file is not a conffile; dpkg will not remove it on purge.
+if [ "$1" = purge ]; then
+	rm -f /etc/default/bootstash
+fi
