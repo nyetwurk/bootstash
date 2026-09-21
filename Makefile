@@ -31,12 +31,13 @@ $(BINDIR)/bootstash-pam: FORCE | $(BINDIR)
 test:
 	go test ./...
 	python3 scripts/test-letsencrypt-deploy.py
+	python3 scripts/test-release.py
 
 fmt:
 	gofmt -w $(shell find . -name '*.go' -not -path './debian/*')
 
 changelog:
-	sh scripts/release-notes.sh debian > debian/changelog
+	python3 scripts/release.py debian > debian/changelog
 
 # Refresh the generated Go-module list in debian/copyright (committed).
 copyright:
@@ -56,7 +57,7 @@ packages: deb
 # Version comes from debian/changelog (what make deb built), not a
 # second git describe — dpkg-buildpackage can dirty the tree.
 lintian:
-	@ver=$$(sh scripts/deb-version.sh packaged); \
+	@ver=$$(python3 scripts/release.py version packaged); \
 	set -- packages/bootstash_$${ver}_*.changes; \
 	if [ "$(PKG_OUT)" = .. ]; then set -- ../bootstash_$${ver}_*.changes; fi; \
 	if [ ! -e "$$1" ]; then \

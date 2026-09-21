@@ -27,8 +27,9 @@ fine. No `~` in tags.
   GitHub draft.
 
 Git tag `-rc` maps to Debian `~rc` (`v1.2.3-rc1` → `1.2.3~rc1`). A
-release tag `v1.2.3` is Debian `1.2.3`. Untagged builds are
-`0.0.0~git+describe` / `UNRELEASED`.
+release tag `v1.2.3` is Debian `1.2.3`. Untagged builds after a tag
+are `0.0.3+gitN.gXXXX` / `UNRELEASED` (`git describe` distance and
+abbrev). No ancestor tag: `0.0.0+git.XXXX`.
 
 ### Workflows
 
@@ -46,20 +47,21 @@ version strings come from
 
 ## Release Notes with git-cliff
 
-[git-cliff](https://git-cliff.org/) plus `scripts/release-notes.sh`.
+[git-cliff](https://git-cliff.org/) plus `scripts/release.py`.
 `make deb` writes `debian/changelog` (gitignored) from the same commit
 set. GitHub uses the markdown body in `cliff.toml`.
 
 - **Conventional commits**: grouped by type; see `commit_parsers` in
   `cliff.toml`
 - **Tag pattern**: `vX.Y.Z` and `vX.Y.Z-rcN`
-- **CI**: `scripts/release-notes.sh github`. Full releases pass
+- **CI**: `python3 scripts/release.py github`. Full releases pass
   `--tag-pattern` so only `vX.Y.Z` tags bound the range (RCs are
   not version boundaries). RC releases keep RC tags as boundaries
 
 ```bash
-sh scripts/release-notes.sh github
-sh scripts/release-notes.sh debian
+python3 scripts/release.py github
+python3 scripts/release.py debian
+python3 scripts/release.py version
 git cliff
 ```
 

@@ -61,7 +61,7 @@ jobs:
           name: bootstash-${{ github.ref_name }}
           path: artifacts
       - name: Release notes
-        run: sh scripts/release-notes.sh github > release-notes.md
+        run: python3 scripts/release.py github > release-notes.md
         env:
           GITHUB_REPO: ${{ github.repository }}
       - name: Create release

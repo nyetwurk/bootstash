@@ -10,5 +10,6 @@
 /debian/*.debhelper.log
 /debian/debhelper-build-stamp
 /plans/
+__pycache__/
 .cursor/
 .*.swp

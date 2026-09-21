@@ -26,6 +26,7 @@ override_dh_auto_build:
 override_dh_auto_test:
 	go test ./...
 	python3 scripts/test-letsencrypt-deploy.py
+	python3 scripts/test-release.py
 
 override_dh_auto_install:
 	install -d debian/bootstash/usr/sbin

@@ -12,7 +12,7 @@ How to compile bootstash and build the `.deb`.
 ```
 make          # bin/bootstashd (PAM), bin/bootstash-pam (setuid helper),
               # and bin/bootstash (CGO_ENABLED=0)
-make test       # go test ./... ; python3 scripts/test-letsencrypt-deploy.py
+make test       # go test ./... ; python3 scripts/test-*.py
 make copyright  # refresh Go module list in debian/copyright
 make packages   # all shipped archives (today: make deb)
 make deb        # debian/changelog + dpkg-buildpackage -b → packages/
@@ -59,7 +59,7 @@ sudo apt-get update && sudo apt-get install -y \
 `golang-go` must satisfy the `go` line in `go.mod`.
 
 `git-cliff` is not in apt. Needed only for GitHub-style notes
-(`scripts/release-notes.sh github`). `make deb` still writes
+(`scripts/release.py github`). `make deb` still writes
 `debian/changelog` without it. Pick one:
 
 Debian `cargo` package:

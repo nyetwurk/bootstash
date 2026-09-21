@@ -27,7 +27,7 @@ def tag_to_deb(tag: str) -> str:
 
 
 def suite_for(ver: str) -> str:
-    if ver.startswith("0.0.0~git"):
+    if "+git" in ver:
         return "UNRELEASED"
     if "~rc" in ver:
         return "experimental"
@@ -130,7 +130,7 @@ def releases_from(data: object) -> list[dict]:
 
 
 def main() -> int:
-    current = sys.argv[1] if len(sys.argv) > 1 else "0.0.0~git+unknown"
+    current = sys.argv[1] if len(sys.argv) > 1 else "0.0.0+git.unknown"
     raw = sys.stdin.read().strip()
     if not raw:
         sys.stdout.write(fallback(current))
