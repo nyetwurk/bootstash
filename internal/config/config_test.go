@@ -479,4 +479,10 @@ func TestBuiltinDefaultDist(t *testing.T) {
 	if cfg.PublicURL != "" || cfg.CertName != "" || cfg.TLSCert != "" || cfg.GoogleClientID != "" {
 		t.Fatalf("empty %+v", cfg)
 	}
+
+	for _, key := range []string{"OIDC_GOOGLE_CLIENT_ID", "OIDC_GOOGLE_CLIENT_SECRET", "OIDC_CRYPTO"} {
+		if _, ok := builtin[key]; ok {
+			t.Fatalf("default-dist must not set %s", key)
+		}
+	}
 }
