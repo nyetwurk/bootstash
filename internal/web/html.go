@@ -22,25 +22,27 @@ var templateFS embed.FS
 var pages = template.Must(template.ParseFS(templateFS, "templates/*.html"))
 
 type pageData struct {
-	Title    string
-	Error    string
-	Hint     string
-	Crumbs   []crumb
-	Action   string
-	CanWrite bool
-	SignedIn bool
-	PAMUser  string
-	OIDCUser string
-	File     string
-	Download string
-	Import   template.URL
-	Choices  []ovpnChoice
-	Entries  []listEntry
+	Title     string
+	Error     string
+	Hint      string
+	Crumbs    []crumb
+	Action    string
+	CanWrite  bool
+	SignedIn  bool
+	PAMUser   string
+	OIDCUser  string
+	File      string
+	Download  string
+	Import    template.URL
+	Choices   []ovpnChoice
+	OvpnToken bool
+	Entries   []listEntry
 }
 
 type ovpnChoice struct {
-	Name   string
-	Import template.URL
+	Name     string
+	Import   template.URL
+	Download string
 }
 
 type crumb struct {

@@ -1,4 +1,5 @@
-# See bootstash(5) and /usr/share/doc/bootstash/QUICKSTART.md
+# See bootstash(5), /usr/share/doc/bootstash/QUICKSTART.md,
+# and /usr/share/doc/bootstash/OPENVPN.md
 # Add only overrides. Packaged operator keys: /usr/lib/bootstash/default-dist
 # OIDC: bootstash provision-google (writes /etc/bootstash/oidc-google.json).
 #
@@ -6,3 +7,4 @@
 # LISTEN=127.0.0.1:8080
 # PUBLIC_URL=
 # ADMIN_USERS=
+# OVPN_TOKEN=auto

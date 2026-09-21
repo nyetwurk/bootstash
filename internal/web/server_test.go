@@ -1692,6 +1692,112 @@ func TestOpenVPNProfileImport(t *testing.T) {
 	}
 }
 
+func TestOpenVPNTokenDisable(t *testing.T) {
+	s, st, dir := testServer(t)
+	c := linkedSession(t, s, st, "alice")
+	if err := os.WriteFile(filepath.Join(dir, "users", "alice", "client.ovpn"), []byte("client"), 0660); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := *s.config()
+	cfg.DisableOvpnToken = true
+	s.SetConfig(&cfg)
+
+	head := do(s, httptest.NewRequest(http.MethodHead, "/openvpn-api/profile", nil))
+	if head.Code != http.StatusOK || head.Header().Get("Ovpn-WebAuth") != "" {
+		t.Fatalf("HEAD operator off: %d webauth=%q", head.Code, head.Header().Get("Ovpn-WebAuth"))
+	}
+	rest := do(s, httptest.NewRequest(http.MethodGet, "/rest/GetUserlogin", nil))
+	if rest.Code != http.StatusUnauthorized || rest.Header().Get("Ovpn-WebAuth") != "" {
+		t.Fatalf("REST operator off: %d webauth=%q", rest.Code, rest.Header().Get("Ovpn-WebAuth"))
+	}
+	if strings.Contains(rest.Body.String(), "Ovpn-WebAuth") {
+		t.Fatalf("REST operator off body: %s", rest.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/openvpn-api/profile", nil)
+	req.Header.Set("Accept", "text/html")
+	req.AddCookie(c)
+	rr := do(s, req)
+	page := rr.Body.String()
+	if rr.Code != http.StatusOK || strings.Contains(page, "openvpn://import-profile/") {
+		t.Fatalf("html operator off: %d %s", rr.Code, page)
+	}
+	if !strings.Contains(page, "download=1") || !strings.Contains(page, "Save") {
+		t.Fatalf("html operator off save: %s", page)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/openvpn-api/profile?download=1", nil)
+	req.Header.Set("Accept", "text/html")
+	req.AddCookie(c)
+	rr = do(s, req)
+	if rr.Code != http.StatusOK || rr.Header().Get("Content-Type") != ovpnProfileType {
+		t.Fatalf("download operator off: %d %s", rr.Code, rr.Header().Get("Content-Type"))
+	}
+
+	id, err := s.putOvpnTicket("alice", "client.ovpn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok := do(s, httptest.NewRequest(http.MethodGet, "/openvpn-api/profile?token="+id, nil))
+	if tok.Code != http.StatusNotFound || tok.Header().Get("Ovpn-WebAuth") != "" {
+		t.Fatalf("token operator off: %d webauth=%q", tok.Code, tok.Header().Get("Ovpn-WebAuth"))
+	}
+
+	s2, st2, dir2 := testServer(t)
+	c2 := linkedSession(t, s2, st2, "alice")
+	if err := os.WriteFile(filepath.Join(dir2, "users", "alice", "client.ovpn"), []byte("client"), 0660); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir2, "users", "alice", ovpnTokenSentinel), []byte(""), 0660); err != nil {
+		t.Fatal(err)
+	}
+	probe := do(s2, httptest.NewRequest(http.MethodHead, "/openvpn-api/profile", nil))
+	if probe.Header().Get("Ovpn-WebAuth") != ovpnWebAuth {
+		t.Fatalf("HEAD user sentinel still probes: %q", probe.Header().Get("Ovpn-WebAuth"))
+	}
+	req = httptest.NewRequest(http.MethodGet, "/openvpn-api/profile", nil)
+	req.Header.Set("Accept", "text/html")
+	req.AddCookie(c2)
+	rr = do(s2, req)
+	page = rr.Body.String()
+	if rr.Code != http.StatusOK || strings.Contains(page, "openvpn://import-profile/") {
+		t.Fatalf("html sentinel: %d %s", rr.Code, page)
+	}
+	if !strings.Contains(page, "Save") {
+		t.Fatalf("html sentinel save: %s", page)
+	}
+	id, err = s2.putOvpnTicket("alice", "client.ovpn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok = do(s2, httptest.NewRequest(http.MethodGet, "/openvpn-api/profile?token="+id, nil))
+	if tok.Code != http.StatusNotFound {
+		t.Fatalf("token sentinel: %d", tok.Code)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir2, "users", "alice", "home.ovpn"), []byte("home"), 0660); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dir2, "users", "alice", "client.ovpn")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir2, "users", "alice", "work.ovpn"), []byte("work"), 0660); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/openvpn-api/profile", nil)
+	req.Header.Set("Accept", "text/html")
+	req.AddCookie(c2)
+	rr = do(s2, req)
+	page = rr.Body.String()
+	if strings.Contains(page, "openvpn://import-profile/") {
+		t.Fatalf("picker sentinel minted: %s", page)
+	}
+	if !strings.Contains(page, "profile=work.ovpn") || !strings.Contains(page, "profile=home.ovpn") {
+		t.Fatalf("picker sentinel downloads: %s", page)
+	}
+}
+
 func TestListingShowsDeleteWhenWritable(t *testing.T) {
 	s, st, dir := testServer(t)
 	c := linkedSession(t, s, st, "alice")

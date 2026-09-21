@@ -31,7 +31,10 @@ type Config struct {
 	TLSCert   string
 	TLSKey    string
 	// DisableTLS is TLS=no: TCP binds stay HTTP even if PEMs exist.
-	DisableTLS         bool
+	DisableTLS bool
+	// DisableOvpnToken is OVPN_TOKEN=no: do not mint Connect
+	// capability URLs or advertise Ovpn-WebAuth. Unset / auto: on.
+	DisableOvpnToken   bool
 	CertName           string
 	Data               string
 	GoogleClientID     string
@@ -161,11 +164,18 @@ func (c *Config) apply(m map[string][]string) error {
 		c.CertName = s
 	}
 	if s := first(m, "TLS"); s != "" {
-		off, err := parseTLS(s)
+		off, err := parseAutoOff(s)
 		if err != nil {
 			return fmt.Errorf("TLS: %w", err)
 		}
 		c.DisableTLS = off
+	}
+	if s := first(m, "OVPN_TOKEN"); s != "" {
+		off, err := parseAutoOff(s)
+		if err != nil {
+			return fmt.Errorf("OVPN_TOKEN: %w", err)
+		}
+		c.DisableOvpnToken = off
 	}
 	if s := first(m, "MAX_UPLOAD"); s != "" {
 		n, err := parseSize(s)
@@ -217,7 +227,7 @@ func (c *Config) UseTLS() bool {
 
 // IsAdmin reports whether pamUser is in ADMIN_USERS. Empty list: nobody.
 // Checked live from the current config (SIGHUP applies). Grants no extra
-// HTTP powers in v1; it is the hook for later admin work.
+// HTTP powers currently; it is the hook for later admin work.
 func (c *Config) IsAdmin(pamUser string) bool {
 	if c == nil || pamUser == "" {
 		return false

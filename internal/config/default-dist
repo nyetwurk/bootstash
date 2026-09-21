@@ -16,6 +16,7 @@ TLS=auto
 TLS_CERT=
 TLS_KEY=
 CERT_NAME=
+OVPN_TOKEN=auto
 
 PAM_SERVICE=bootstashd
 UNIX_GROUP=bootstash

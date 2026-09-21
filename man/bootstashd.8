@@ -66,10 +66,18 @@ host, then the cubby filename in brackets
 The URL you paste is still
 .BR PUBLIC_URL ;
 that is not the tunnel endpoint.
-A cubby GET of
+Cubby GET of
 .B .ovpn
-is the file as stored.
+is the file as stored (session cookie).
+.B ?token=
+is a capability URL (60 seconds).
+.B OVPN_TOKEN=no
+or cubby
+.B .bootstash-no-ovpn-token
+turns tokens off; Save plus Connect’s file picker still work.
 This is not Access Server Basic Auth.
+See
+.IR /usr/share/doc/bootstash/OPENVPN.md .
 .PP
 It is a convenience store, not a high-assurance secrets engine. Isolation
 is a path jail plus POSIX permissions; the process runs as one service
@@ -257,4 +265,5 @@ Removing the package does not delete
 .SH SEE ALSO
 .BR bootstash (8),
 .BR bootstash (5),
-.IR /usr/share/doc/bootstash/QUICKSTART.md
+.IR /usr/share/doc/bootstash/QUICKSTART.md ,
+.IR /usr/share/doc/bootstash/OPENVPN.md

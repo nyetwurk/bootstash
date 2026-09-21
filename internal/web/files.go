@@ -88,7 +88,7 @@ func (s *Server) requireWrite(w http.ResponseWriter, r *http.Request) bool {
 	return s.requireCSRF(w, r)
 }
 
-// isAdmin is the v1 seam: ADMIN_USERS in operator config, linked PAM name, live config.
+// isAdmin is the current seam: ADMIN_USERS in operator config, linked PAM name, live config.
 // It grants no extra HTTP powers.
 func (s *Server) isAdmin(sess *store.Session) bool {
 	if sess == nil || sess.PAMUser == "" {
@@ -461,7 +461,7 @@ func (s *Server) serveOpenVPNProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer root.Close()
 	found := collectOvpn(root)
-	rel := pickOvpn(found)
+	rel := requestedOvpn(found, r.URL.Query().Get("profile"))
 	if r.URL.Query().Get("embedded") == "true" {
 		if rel == "" {
 			log.Printf("openvpn GET %s pam=%s from %s ua=%q: embedded no profile found=%q -> /home/", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, r.UserAgent(), found)
@@ -519,31 +519,42 @@ func (s *Server) ovpnImportURL(pam, rel string) (template.URL, error) {
 	return template.URL("openvpn://import-profile/" + s.config().PublicURL + "/openvpn-api/profile?token=" + id), nil
 }
 
+func (s *Server) tryOvpnImport(r *http.Request, pam, rel string) template.URL {
+	imp, err := s.ovpnImportURL(pam, rel)
+	if err != nil {
+		log.Printf("openvpn GET %s pam=%s from %s: ticket %s: %v", r.URL.RequestURI(), pam, r.RemoteAddr, rel, err)
+		return ""
+	}
+	return imp
+}
+
 func (s *Server) renderOvpnHandoff(w http.ResponseWriter, r *http.Request, sess *store.Session, found []string, rel string) {
 	data := sessionPage(sess, pageData{Title: "OpenVPN"})
+	tokens := !s.ovpnTokensOff(sess.PAMUser)
+	data.OvpnToken = tokens
 	switch {
 	case rel != "":
 		data.File = path.Base(rel)
-		data.Download = ovpnProfileDownloadURI(r)
-		imp, err := s.ovpnImportURL(sess.PAMUser, rel)
-		if err != nil {
-			log.Printf("openvpn GET %s pam=%s from %s: ticket: %v", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, err)
-		} else {
-			data.Import = imp
+		data.Download = ovpnProfileDownloadURI(r, rel)
+		if tokens {
+			data.Import = s.tryOvpnImport(r, sess.PAMUser, rel)
 		}
 		log.Printf("openvpn GET %s pam=%s from %s ua=%q: html handoff %s import=%v found=%q", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, r.UserAgent(), rel, data.Import != "", found)
 	case len(found) > 0:
 		sorted := append([]string(nil), found...)
 		sort.Strings(sorted)
 		for _, p := range sorted {
-			imp, err := s.ovpnImportURL(sess.PAMUser, p)
-			if err != nil {
-				log.Printf("openvpn GET %s pam=%s from %s: ticket %s: %v", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, p, err)
-				continue
+			ch := ovpnChoice{Name: p, Download: ovpnProfileDownloadURI(r, p)}
+			if tokens {
+				imp := s.tryOvpnImport(r, sess.PAMUser, p)
+				if imp == "" {
+					continue
+				}
+				ch.Import = imp
 			}
-			data.Choices = append(data.Choices, ovpnChoice{Name: p, Import: imp})
+			data.Choices = append(data.Choices, ch)
 		}
-		log.Printf("openvpn GET %s pam=%s from %s ua=%q: html picker n=%d found=%q", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, r.UserAgent(), len(data.Choices), found)
+		log.Printf("openvpn GET %s pam=%s from %s ua=%q: html picker n=%d tokens=%v found=%q", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, r.UserAgent(), len(data.Choices), tokens, found)
 	default:
 		log.Printf("openvpn GET %s pam=%s from %s ua=%q: html empty", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, r.UserAgent())
 	}
@@ -560,6 +571,11 @@ func (s *Server) serveOpenVPNTicket(w http.ResponseWriter, r *http.Request, id s
 	}
 	if !ok {
 		log.Printf("openvpn token %s from %s ua=%q: missing", r.Method, r.RemoteAddr, r.UserAgent())
+		http.NotFound(w, r)
+		return
+	}
+	if s.ovpnTokensOff(t.pam) {
+		log.Printf("openvpn token %s pam=%s from %s ua=%q: disabled %s", r.Method, t.pam, r.RemoteAddr, r.UserAgent(), t.rel)
 		http.NotFound(w, r)
 		return
 	}
@@ -681,15 +697,64 @@ func ovpnTitledProfile(rel string, body []byte) []byte {
 	return b.Bytes()
 }
 
-func ovpnProfileDownloadURI(r *http.Request) string {
+func ovpnProfileDownloadURI(r *http.Request, rel string) string {
 	q := r.URL.Query()
 	q.Set("download", "1")
 	q.Del("embedded")
+	q.Del("token")
+	if rel != "" {
+		q.Set("profile", rel)
+	} else {
+		q.Del("profile")
+	}
 	path := r.URL.Path
 	if path == "" {
 		path = "/openvpn-api/profile"
 	}
 	return path + "?" + q.Encode()
+}
+
+// ovpnTokenSentinel in the cubby root turns off Connect capability URLs
+// for that PAM user. Presence of a regular file; content is ignored.
+const ovpnTokenSentinel = ".bootstash-no-ovpn-token"
+
+func (s *Server) ovpnTokensOff(pam string) bool {
+	if s.config().DisableOvpnToken {
+		return true
+	}
+	if pam == "" || !pamauth.ValidUsername(pam) {
+		return false
+	}
+	rootPath, err := s.jailPath(&store.Session{PAMUser: pam})
+	if err != nil {
+		return true
+	}
+	root, err := jail.OpenRoot(rootPath)
+	if err != nil {
+		return true
+	}
+	defer root.Close()
+	st, err := root.Stat(ovpnTokenSentinel)
+	if err != nil {
+		if jail.IsNotExist(err) {
+			return false
+		}
+		return true
+	}
+	return st.Mode().IsRegular()
+}
+
+func requestedOvpn(found []string, want string) string {
+	if want == "" {
+		return pickOvpn(found)
+	}
+	want = path.Clean(want)
+	for _, p := range found {
+		if p == want {
+			return p
+		}
+	}
+	return ""
 }
 
 func collectOvpn(root *jail.Root) []string {

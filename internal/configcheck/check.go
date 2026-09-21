@@ -42,6 +42,9 @@ func Summary(cfg *config.Config) string {
 	if cfg.DisableTLS {
 		s += " tls=no"
 	}
+	if cfg.DisableOvpnToken {
+		s += " ovpn-token=no"
+	}
 	if len(cfg.AdminUsers) > 0 {
 		s += " admins=" + strings.Join(cfg.AdminUsers, ",")
 	}

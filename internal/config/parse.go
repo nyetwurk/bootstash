@@ -114,9 +114,10 @@ func parseBool(s string) (bool, error) {
 	}
 }
 
-// parseTLS: auto/maybe means use PEMs if present. yes/no and the
-// other bool pairs are the same as parseBool (yes = auto).
-func parseTLS(s string) (disable bool, err error) {
+// parseAutoOff: auto/maybe means enabled (disable false). yes/no and
+// the other bool pairs follow parseBool (yes = enabled). Used by TLS
+// and OVPN_TOKEN.
+func parseAutoOff(s string) (disable bool, err error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "auto", "maybe":
 		return false, nil

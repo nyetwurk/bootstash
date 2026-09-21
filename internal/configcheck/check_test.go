@@ -34,8 +34,9 @@ func TestSummaryIncludesAdmins(t *testing.T) {
 	if !strings.Contains(got, "admins=alice") || !strings.Contains(got, "listen=127.0.0.1:8080") {
 		t.Fatalf("%s", got)
 	}
-	off := &config.Config{PublicURL: "http://stash.test", Binds: []string{"127.0.0.1:8080"}, DisableTLS: true}
-	if got := Summary(off); !strings.Contains(got, "tls=no") {
+	off := &config.Config{PublicURL: "http://stash.test", Binds: []string{"127.0.0.1:8080"}, DisableTLS: true, DisableOvpnToken: true}
+	got = Summary(off)
+	if !strings.Contains(got, "tls=no") || !strings.Contains(got, "ovpn-token=no") {
 		t.Fatalf("%s", got)
 	}
 }

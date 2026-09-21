@@ -90,53 +90,10 @@ That name must resolve and reach this daemon. If you bind only a
 tunnel NIC but the origin is a public `:443` vhost, the callback
 misses.
 
-Google sign-in errors:
-[`README.md`](README.md#oidc-troubleshooting).
-
-## Origin models
-
-One `PUBLIC_URL`. OpenVPN Connect pastes that HTTPS origin, not a
-file path and not `remote` unless those names are the same.
-`.ovpn` files already in the cubby are what that import opens.
-Extra DNS names `Redirect` only. Do not `ProxyPass` two names.
-Do not `ServerAlias`. HTTPS cookies are host-only. Sample vhost is
-layout A (`/usr/share/doc/bootstash/examples/apache-vhost.conf`).
-
-- **A — cubby origin.** `PUBLIC_URL=https://bootstash.example`.
-  Browser and Connect talk to that host. OpenVPN `remote` is a
-  different name (`vpn.example` UDP). Extra names (`bs`) 301 to
-  bootstash
-- **B — VPN origin.** `PUBLIC_URL=https://vpn.example`. That name
-  is the proxy `ServerName`. Extra cubby names 301 **to vpn**.
-  Connect pastes vpn. Tunnel is still `remote vpn` UDP. Apache
-  owns 443. OpenVPN must **not** listen on TCP 443
-
-Not a model: OpenVPN TCP on 443 and Apache on the same address.
-Two `ProxyPass` origins. `ServerAlias`. 301 from vpn onto a
-different cubby host (Connect’s probe follows and drops
-`Ovpn-WebAuth`).
-
-```mermaid
-flowchart LR
-  A["A cubby origin<br/>PUBLIC_URL = bootstash.example<br/>OpenVPN remote = vpn.example UDP<br/>extra names 301 to bootstash"]
-  B["B VPN origin<br/>PUBLIC_URL = vpn.example<br/>OpenVPN remote = vpn.example UDP<br/>extra names 301 to vpn<br/>OpenVPN not on TCP 443"]
-```
-
-A 301 from the pasted host onto another name is the same class of
-failure as a 302 to `/login`:
-
-```mermaid
-sequenceDiagram
-  participant Connect
-  participant vpn as vpn.example
-  participant cubby as bootstash.example
-  Connect->>vpn: HEAD /openvpn-api/profile
-  vpn-->>Connect: 301 to cubby
-  Note over Connect: follows redirect, drops Ovpn-WebAuth
-  Connect->>cubby: HEAD /openvpn-api/profile
-  cubby-->>Connect: 200 Ovpn-WebAuth
-  Note over Connect: WebAuth never starts
-```
+- Google sign-in errors:
+  [`README.md`](README.md#oidc-troubleshooting)
+- OpenVPN Connect (paste origin, capability URL):
+  [`OPENVPN.md`](OPENVPN.md)
 
 ## TLS and Let’s Encrypt
 
@@ -258,6 +215,7 @@ Configure does not enable the unit.
 
 ## See also
 
-Google sign-in errors: [`README.md`](README.md#oidc-troubleshooting).
-Changing the code: [`DEVELOPERS.md`](DEVELOPERS.md). Building:
-[`BUILDING.md`](BUILDING.md).
+- Google sign-in errors: [`README.md`](README.md#oidc-troubleshooting)
+- OpenVPN Connect: [`OPENVPN.md`](OPENVPN.md)
+- Changing the code: [`DEVELOPERS.md`](DEVELOPERS.md)
+- Building: [`BUILDING.md`](BUILDING.md)

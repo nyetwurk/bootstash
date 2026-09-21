@@ -1,16 +1,21 @@
 # bootstash
 
-A small daemon that is a **self-hosted cubby for bootstrap files**: after
-you prove you are an existing Linux user, you **browse, download, and
-upload** your own tree — keys, profiles, first-run artifacts — from
-whatever browser you have on the road.
+A small daemon that is a **self-hosted cubby for bootstrap files**,
+and a way to **import an `.ovpn` into OpenVPN Connect** by pasting
+this cubby’s origin. After you prove you are an existing Linux user,
+you browse, download, and upload your own tree — keys, profiles,
+first-run artifacts — from whatever browser you have on the road.
 
-It is not a secrets engine (no unseal, leases, or KV API). Bind wherever
-you want (loopback, LAN, a tunnel NIC, later a public address). v1 auth
-is Google OIDC linked to PAM; other issuers can be added later.
+It is not a secrets engine (no unseal, leases, or KV API). It is not
+a VPN: it hands a profile to Connect; it does not terminate tunnels.
+Bind wherever you want (loopback, LAN, a tunnel NIC, later a public
+address). Auth is currently Google OIDC linked to PAM; other issuers
+can be added later.
 
-**Install and first run:** [`QUICKSTART.md`](QUICKSTART.md). Config
-keys: `bootstash(5)`.
+- **Install and first run:** [`QUICKSTART.md`](QUICKSTART.md)
+- **OpenVPN Connect:** [`OPENVPN.md`](OPENVPN.md) (paste `PUBLIC_URL`;
+  import uses a short-lived unauthenticated URL)
+- **Config:** `bootstash(5)`
 
 ## Expectations
 
@@ -26,9 +31,9 @@ hostile-tenant environments.
   for a laptop on the LAN,” not an HSM or policy engine
 - A bug or stolen cookie is a bad day for those files. Keep crown jewels
   in OpenBao, `age`/`SOPS`, or not on this host
-- Kits are **temporary**. Expiration (not v1) will delete aged HTTP
-  uploads so this does not become a long-term archive. Until then, you
-  still should not treat it as backup
+- Cubby assets are **temporary**. Expiration (not yet shipped) will
+  delete aged HTTP uploads so this does not become a long-term
+  archive. Until then, you still should not treat it as backup
 
 If you need audit leases, Shamir unseal, or “compromise of the app server
 must not yield plaintext,” this is the wrong program.
@@ -44,9 +49,16 @@ Typical first session:
 - Reach the daemon
 - Sign in with Google
 - Once: Linux username and password
-- Download bootstrap files
+- Download bootstrap files, or paste this origin into OpenVPN Connect
 
 Install is a **public `.deb`**.
+
+## OpenVPN Connect
+
+Paste `PUBLIC_URL` (the origin, not a file path) into Connect. After
+Google, allow the page to open the app. How pick, titles, origin A/B,
+the capability URL, and how to turn tokens off:
+[`OPENVPN.md`](OPENVPN.md).
 
 ## What you can do
 
@@ -56,21 +68,14 @@ Install is a **public `.deb`**.
 - Browse **your** folder that other people cannot see
 - Download files, including large ones (Range so a browser can play or
   save them)
-- Import an `.ovpn` from OpenVPN Connect: paste this cubby’s origin
-  (`PUBLIC_URL`, not a file path). After Google, allow the page to
-  open Connect (or tap **Open in OpenVPN Connect**). One file, or
-  `client.ovpn` among several, imports itself. Several other `.ovpn`
-  files: pick one on that page. Connect should show
-  `vpn-host [filename]` (OpenVPN `remote` in the file, then the
-  cubby name; the URL you paste is still `PUBLIC_URL`)
 - Copy a file’s link from the listing (clipboard icon next to the
   name)
 - Upload into **your** folder
 - From a host login: `bootstash put` files into **your** folder (not sudo)
 - Delete files (and empty folders) in **your** folder
 - Sign out (this browser session; the Linux link stays)
-- Later: **expiration** of HTTP-uploaded kit files so the tree does not
-  accumulate forever
+- Later: **expiration** of HTTP-uploaded cubby assets so the tree does
+  not accumulate forever
 
 Later visits only need Google. Changing or disabling the Unix account
 does not drop the map. The Linux password is not used again until an
@@ -94,8 +99,9 @@ TLS:
   and dest PEMs are removed. A reverse proxy may terminate HTTPS
 
 How to set `LISTEN`, `PUBLIC_URL`, and TLS:
-[`QUICKSTART.md`](QUICKSTART.md). Google sign-in errors:
-[OIDC troubleshooting](#oidc-troubleshooting).
+
+- [`QUICKSTART.md`](QUICKSTART.md)
+- Google sign-in errors: [OIDC troubleshooting](#oidc-troubleshooting)
 
 ## Your files vs everyone else's
 
@@ -121,16 +127,19 @@ root). Ordinary `cp` (not `cp -a`) also works. Do not `chown` to
 - Not a high-assurance or regulated credential store (see Expectations)
 - Not OpenBao, HashiCorp Vault, or Vaultwarden (no unseal, KV API, or
   password-manager vault)
-- Not a VPN, IdP, or account provisioner
+- Not a VPN, IdP, or account provisioner (Connect import is
+  [`OPENVPN.md`](OPENVPN.md))
 - Not Samba, Nextcloud, or WebDAV (no collections, PROPFIND, or DAV
   clients). Upload is ordinary HTTP PUT/POST, not a sync product
-- Not a long-term archive or backup (see expiration, post-v1)
+- Not a long-term archive or backup (see expiration, not yet shipped)
 - Not a public anonymous download site
 - Not a reason to auto-create Unix users
 
 Package: `bootstash`. Daemon: `bootstashd`. CLI: `bootstash`
-(`provision-google`, `links`, `unlink`, `put`). Changing the code:
-[`DEVELOPERS.md`](DEVELOPERS.md). Building: [`BUILDING.md`](BUILDING.md).
+(`provision-google`, `links`, `unlink`, `put`).
+
+- Changing the code: [`DEVELOPERS.md`](DEVELOPERS.md)
+- Building: [`BUILDING.md`](BUILDING.md)
 
 ## OIDC troubleshooting
 
@@ -167,7 +176,7 @@ will send). Reload after changing `PUBLIC_URL` or installing
   and do not follow Apache `ServerAlias`. A separate vhost should
   `Redirect` to `PUBLIC_URL` (see
   `/usr/share/doc/bootstash/examples/apache-vhost.conf` and
-  QUICKSTART Origin models)
+  [`OPENVPN.md`](OPENVPN.md) Origin models)
 - Sign-in page **Sign-in expired**: `PUBLIC_URL` scheme does not
   match how you reach the daemon (`https` uses `__Host-` cookies,
   which browsers refuse on HTTP), or you switched hostname
@@ -231,7 +240,7 @@ Your own certs:
 - `TLS=no` skips the copy and removes dest PEMs
 
 Renaming the dest (for example `/etc/bootstash/lets-encrypt/`) is not
-in v1.
+supported.
 
 ## License
 

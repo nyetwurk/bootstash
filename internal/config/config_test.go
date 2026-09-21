@@ -452,6 +452,32 @@ func TestTLSFalseSynonym(t *testing.T) {
 	}
 }
 
+func TestOvpnTokenOff(t *testing.T) {
+	dir := t.TempDir()
+	def := filepath.Join(dir, "default-dist")
+	op := filepath.Join(dir, "config")
+	if err := os.WriteFile(def, []byte("LISTEN=127.0.0.1:8080\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(op, []byte("OVPN_TOKEN=no\nPUBLIC_URL=http://box.example:8080\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(def, op, filepath.Join(dir, "nosecrets"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.DisableOvpnToken {
+		t.Fatalf("%+v", cfg)
+	}
+	if err := os.WriteFile(op, []byte("OVPN_TOKEN=auto\nPUBLIC_URL=http://box.example:8080\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(def, op, filepath.Join(dir, "nosecrets"))
+	if err != nil || cfg.DisableOvpnToken {
+		t.Fatalf("auto: %+v %v", cfg, err)
+	}
+}
+
 func TestBuiltinDefaultDist(t *testing.T) {
 	prevFQDN := lookupFQDN
 	prevRoot := certRoot
@@ -470,7 +496,7 @@ func TestBuiltinDefaultDist(t *testing.T) {
 	if cfg.Data != "/var/lib/bootstash" || cfg.PAMService != "bootstashd" || cfg.UnixGroup != "bootstash" {
 		t.Fatalf("paths %+v", cfg)
 	}
-	if cfg.MaxUpload != 32<<20 || cfg.DisableTLS {
+	if cfg.MaxUpload != 32<<20 || cfg.DisableTLS || cfg.DisableOvpnToken {
 		t.Fatalf("scalars %+v", cfg)
 	}
 	if len(cfg.Binds) != 1 || cfg.Binds[0] != "127.0.0.1:8080" {

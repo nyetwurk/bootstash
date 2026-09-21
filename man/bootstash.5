@@ -121,7 +121,7 @@ Extra DNS names must
 .B Redirect
 here; do not proxy the same backend on two names.
 See
-.IR /usr/share/doc/bootstash/QUICKSTART.md
+.IR /usr/share/doc/bootstash/OPENVPN.md
 (Origin models) and
 .IR /usr/share/doc/bootstash/examples .
 .TP
@@ -184,6 +184,22 @@ is
 .B http
 when
 .BR TLS=no .
+.TP
+.B OVPN_TOKEN
+Default
+.B auto
+(same synonyms as
+.BR TLS ).
+Mint Connect URL-import tokens and send
+.B Ovpn-WebAuth
+on the probe.
+.B no
+turns that off for the whole site (reload).
+A user can also drop
+.B .bootstash-no-ovpn-token
+in their cubby root.
+See
+.IR /usr/share/doc/bootstash/OPENVPN.md .
 .TP
 .B TLS_CERT / TLS_KEY
 If both are set, TCP binds use HTTPS with these files unless
@@ -314,8 +330,9 @@ Group for Unix sockets. Default
 .TP
 .B ADMIN_USERS
 Comma- or space-separated PAM usernames treated as operators (the
-admin seam). Default empty: nobody. SIGHUP re-reads the list. v1
-grants no extra HTTP powers. Listing or dropping a PAM link is
+admin seam). Default empty: nobody. SIGHUP re-reads the list.
+Currently grants no extra HTTP powers. Listing or dropping a PAM
+link is
 .B bootstash links
 /
 .B bootstash unlink
@@ -359,4 +376,5 @@ See
 .IR /usr/share/doc/bootstash/QUICKSTART.md .
 .SH SEE ALSO
 .BR bootstashd (8),
-.BR bootstash (8)
+.BR bootstash (8),
+.IR /usr/share/doc/bootstash/OPENVPN.md

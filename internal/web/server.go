@@ -43,7 +43,7 @@ type oauthTx struct {
 	exp      time.Time
 }
 
-// IDP is the OIDC authorization-code provider (Google in v1).
+// IDP is the OIDC authorization-code provider (currently Google).
 type IDP interface {
 	AuthCodeURL(ctx context.Context, state, nonce, redirectURL string) (authURL, verifier string, err error)
 	Exchange(ctx context.Context, code, nonce, redirectURL, verifier string) (*oidcgoogle.Identity, error)
@@ -64,6 +64,16 @@ type Server struct {
 	ovpnTickets map[string]ovpnTicket
 }
 
+// ovpnTicketTTL is the Connect URL-import handoff envelope, not a
+// privacy bound. The clock starts at mint (HTML render). Chrome's
+// "Open OpenVPN Connect?" prompt, Connect's confirm, and a retry
+// (HEAD then GET) must still find the ticket.
+//
+// Mint-on-tap cannot move the clock: Chrome drops the user-gesture
+// if the tap fetches a ticket then navigates to openvpn:// (a 302
+// onto the scheme is the same failure). A shorter TTL just 404s
+// slow taps; the token stays a capability URL until it expires.
+// Disable minting if that is unacceptable.
 const ovpnTicketTTL = 60 * time.Second
 const ovpnMaxTickets = 1024
 const ovpnTicketUses = 2
@@ -200,11 +210,11 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 // OIDC) instead of Access Server REST or an in-app webview.
 const ovpnWebAuth = "bootstash,external"
 
-const ovpnRestWebAuth = `<?xml version="1.0" encoding="UTF-8"?>
+const ovpnRestXML = `<?xml version="1.0" encoding="UTF-8"?>
 <Error>
   <Type>Authorization Required</Type>
   <Synopsis>REST method failed</Synopsis>
-  <Message>Ovpn-WebAuth: %s</Message>
+  <Message>%s</Message>
 </Error>
 `
 
@@ -218,7 +228,7 @@ func (s *Server) handleOpenVPNProfile(w http.ResponseWriter, r *http.Request) {
 		s.serveOpenVPNTicket(w, r, tok)
 		return
 	}
-	w.Header().Set("Ovpn-WebAuth", ovpnWebAuth)
+	s.maybeOvpnWebAuth(w)
 	sess := s.session(r)
 	pam := "-"
 	switch {
@@ -229,7 +239,11 @@ func (s *Server) handleOpenVPNProfile(w http.ResponseWriter, r *http.Request) {
 		pam = sess.PAMUser
 	}
 	if r.Method == http.MethodHead {
-		log.Printf("openvpn HEAD %s pam=%s from %s ua=%q: 200 Ovpn-WebAuth", r.URL.RequestURI(), pam, r.RemoteAddr, r.UserAgent())
+		auth := "Ovpn-WebAuth"
+		if s.config().DisableOvpnToken {
+			auth = "OVPN_TOKEN=no"
+		}
+		log.Printf("openvpn HEAD %s pam=%s from %s ua=%q: 200 %s", r.URL.RequestURI(), pam, r.RemoteAddr, r.UserAgent(), auth)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -256,14 +270,28 @@ func (s *Server) handleOpenVPNRest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	log.Printf("openvpn rest %s %s from %s ua=%q: 401 Ovpn-WebAuth", r.Method, r.URL.RequestURI(), r.RemoteAddr, r.UserAgent())
-	w.Header().Set("Ovpn-WebAuth", ovpnWebAuth)
+	off := s.config().DisableOvpnToken
+	auth := "Ovpn-WebAuth"
+	msg := "Ovpn-WebAuth: " + ovpnWebAuth
+	if off {
+		auth = "OVPN_TOKEN=no"
+		msg = "Authorization Required"
+	}
+	log.Printf("openvpn rest %s %s from %s ua=%q: 401 %s", r.Method, r.URL.RequestURI(), r.RemoteAddr, r.UserAgent(), auth)
+	s.maybeOvpnWebAuth(w)
 	w.Header().Set("Content-Type", "text/xml; charset=utf-8")
 	w.WriteHeader(http.StatusUnauthorized)
 	if r.Method == http.MethodHead {
 		return
 	}
-	_, _ = fmt.Fprintf(w, ovpnRestWebAuth, ovpnWebAuth)
+	_, _ = fmt.Fprintf(w, ovpnRestXML, msg)
+}
+
+func (s *Server) maybeOvpnWebAuth(w http.ResponseWriter) {
+	if s.config().DisableOvpnToken {
+		return
+	}
+	w.Header().Set("Ovpn-WebAuth", ovpnWebAuth)
 }
 
 func (s *Server) entryPath(r *http.Request) string {

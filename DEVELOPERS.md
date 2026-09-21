@@ -1,10 +1,11 @@
 # Developers
 
-For people and agents changing bootstash. Operators use **README.md**,
-[`QUICKSTART.md`](QUICKSTART.md), and the man pages (`bootstashd(8)`,
-`bootstash(8)`, `bootstash(5)`).
-Building the binaries and `.deb`: [`BUILDING.md`](BUILDING.md). This
-is not a public Go API.
+For people and agents changing bootstash. This is not a public Go API.
+
+- Operators: [`README.md`](README.md), [`QUICKSTART.md`](QUICKSTART.md),
+  [`OPENVPN.md`](OPENVPN.md), and the man pages (`bootstashd(8)`,
+  `bootstash(8)`, `bootstash(5)`)
+- Building the binaries and `.deb`: [`BUILDING.md`](BUILDING.md)
 
 Do not add unseal, at-rest encryption, or per-request uid switching to
 look like Vault. Keep the jail and CSRF. Do not promise more than
@@ -22,10 +23,10 @@ README “Expectations.”
   `NoNewPrivileges=`
 - File API: GET (Range/206), PUT/POST upload, DELETE of own files and
   **empty** directories. No rename, no WebDAV
-- Identity is `(issuer, sub)`, never email-as-path. v1 requires PAM
-  link. Do not `useradd`. Do not grow a password/app-user table
-- Google only in v1. A later IdP is a new adapter + helper-owned keys
-  under `/etc/bootstash/`, not a new session model
+- Identity is `(issuer, sub)`, never email-as-path. Currently requires
+  PAM link. Do not `useradd`. Do not grow a password/app-user table
+- Currently Google only. A later IdP is a new adapter + helper-owned
+  keys under `/etc/bootstash/`, not a new session model
 - Not ACME. Packaged `TLS=auto` (`maybe` is the same): HTTPS from
   `TLS_CERT` / `TLS_KEY` or `/etc/bootstash/certs/<CERT_NAME>/` when
   both PEMs exist, otherwise HTTP. `TLS=no`: HTTP on TCP binds; the
@@ -37,7 +38,8 @@ README “Expectations.”
   Do not read `/etc/letsencrypt/live`. Never copy every `live/` cert.
 - Not `/etc/bootstash.d/`. Not systemd `EnvironmentFile=` or empty
   `ConfigurationDirectory=`
-- `ADMIN_USERS` is a PAM-name seam with **no extra HTTP powers** in v1
+- `ADMIN_USERS` is a PAM-name seam. It currently grants **no extra
+  HTTP powers**
 
 ## Config
 
@@ -99,7 +101,8 @@ browser uses; `Host` on the backend socket does not matter.
 One origin. Extra DNS names `Redirect` at the proxy; do not
 `ProxyPass` two names onto the same daemon. Layouts A (cubby
 host) and B (VPN host), and why a 301 off `PUBLIC_URL` drops
-Connect’s `Ovpn-WebAuth`: [`QUICKSTART.md`](QUICKSTART.md#origin-models).
+Connect’s `Ovpn-WebAuth`: [`OPENVPN.md`](OPENVPN.md) (operator story
+and the capability-URL rule). Protocol below.
 
 ## Listen
 
@@ -157,15 +160,18 @@ Routes: `/login`, `/oidc/callback`, `/link`, `/logout`, `/home/`,
 `/openvpn-api/profile`, `/rest/GetUserlogin`, `/rest/GetAutologin`.
 HEAD `/openvpn-api/profile` is `200` with `Ovpn-WebAuth:
 bootstash,external` (OpenVPN Connect URL import; `external` so
-Google OIDC runs in a normal browser). Unauthenticated GET there is
+Google OIDC runs in a normal browser) unless `OVPN_TOKEN=no`. Unauthenticated GET there is
 `200` login HTML with that header (not a 302: Connect follows
 redirects and would drop it) and sets a short-lived cookie so
 OIDC/`/link` return to this URL. Linked browser GET (`Accept:
 text/html`) is a page with `openvpn://import-profile/` plus a
 one-time `?token=` URL (60s, two GETs, then 404; Connect fetches
 that itself; no session cookie, no `Ovpn-WebAuth`) and a
-`?download=1` save link (session cookie; attachment). Import and
-token bytes get `# OVPN_ACCESS_SERVER_FRIENDLY_NAME` /
+`?download=1` save link (session cookie; attachment). `OVPN_TOKEN=no`
+skips `Ovpn-WebAuth` and minting. A cubby file
+`.bootstash-no-ovpn-token` skips minting for that user (anonymous
+probe still advertises WebAuth). Import and token bytes get
+`# OVPN_ACCESS_SERVER_FRIENDLY_NAME` /
 `setenv FRIENDLY_NAME` as `remote [filename]` (first OpenVPN
 `remote` in the profile, then the cubby name; the paste origin is
 still `PUBLIC_URL`). Cubby GET of `.ovpn` stays the file as
@@ -179,15 +185,16 @@ there is no unique pick. `?embedded=true` is an HTML page that
 decisions log as `openvpn ...` (journalctl); token lines omit
 `?token=`. GET `/rest/GetUserlogin` and `/rest/GetAutologin` are
 `401` XML `Ovpn-WebAuth: bootstash,external` in the body and
-header, no `WWW-Authenticate`. That is the spec bounce off Access
-Server REST into the browser; not Basic Auth and not a profile.
+header (no `WWW-Authenticate`) unless `OVPN_TOKEN=no`. That is the
+spec bounce off Access Server REST into the browser; not Basic Auth
+and not a profile.
 GET/HEAD `/home` without a linked session redirects to `/login` (or
 `/link` if the cookie is unlinked). Other methods return 401.
 Unknown `?provider=` redirects to `/login`. GET `/logout` redirects
 to `/`.
 Unlinked sessions only reach login, callback, `/link`, `/logout`,
 and `/openvpn-api/profile` (which sends them to `/link`).
-v1 link table is `bootstash links` and `bootstash unlink USER`
+The link table is `bootstash links` and `bootstash unlink USER`
 (operator access to `$DATA/state`), not HTTP.
 HTML **Sign out** is `POST /logout`: this session file and cookie only.
 The PAM map stays. Not unlink.
@@ -264,6 +271,8 @@ session rotate on `/link`, relink drops other sessions, oauth login
 cap, response headers, GET `/home` login redirect, HTML 404 / login-fail
 pages, `.ovpn` MIME, HEAD `/openvpn-api/profile`, REST `Ovpn-WebAuth`
 bounce, import `?token=` (no session, no `Ovpn-WebAuth`, titled
-`remote [filename]`), picker HTML, `mime.types` parse,
+`remote [filename]`), picker HTML, `OVPN_TOKEN=no` / cubby
+`.bootstash-no-ovpn-token` (no mint, no probe WebAuth when operator
+off), `mime.types` parse,
 `scripts/test-letsencrypt-deploy.py` (pick order, `TLS=no` purge,
 renew of an already-installed dest).
