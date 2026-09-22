@@ -47,6 +47,7 @@ override_dh_auto_install:
 	install -m 0644 contrib/config.example debian/bootstash/usr/share/doc/bootstash/examples/config.example
 	install -m 0644 contrib/nginx-location.conf debian/bootstash/usr/share/doc/bootstash/examples/nginx-location.conf
 	install -m 0644 contrib/apache-vhost.conf debian/bootstash/usr/share/doc/bootstash/examples/apache-vhost.conf
+	install -m 0644 contrib/haproxy-local.cfg debian/bootstash/usr/share/doc/bootstash/examples/haproxy-local.cfg
 
 # debian/bootstash.default would become /etc/default/bootstash.
 override_dh_installinit:

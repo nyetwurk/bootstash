@@ -57,8 +57,8 @@ Install is a **public `.deb`**.
 
 Paste `PUBLIC_URL` (the origin, not a file path) into Connect. After
 Google, allow the page to open the app. How pick, titles, origin A/B,
-the capability URL, and how to turn tokens off:
-[`OPENVPN.md`](OPENVPN.md).
+sharing TCP 443 (port-share vs HAProxy), the capability URL, and how
+to turn tokens off: [`OPENVPN.md`](OPENVPN.md).
 
 ## What you can do
 

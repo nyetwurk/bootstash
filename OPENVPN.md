@@ -117,8 +117,9 @@ flowchart TB
 
 `PUBLIC_URL=https://vpn.example`. That name is the proxy
 `ServerName`. Extra cubby names 301 **to vpn**. Connect pastes vpn.
-Tunnel is still `remote vpn` UDP. The reverse proxy owns 443.
-OpenVPN must **not** listen on TCP 443.
+Tunnel is still `remote vpn` UDP. TCP 443 is HTTPS unless a mux
+owns that port (below). OpenVPN must not bind the same TCP port as
+the HTTPS daemon.
 
 ```mermaid
 flowchart TB
@@ -171,15 +172,18 @@ flowchart LR
   Client --> D
 ```
 
-### OpenVPN port-share
+### Sharing TCP 443
 
-OpenVPN `port-share` on TCP 443 multiplexes the tunnel and
-forwards the rest to Apache. Same address, same port. Fine if you
-do not expect full Connect integration (paste `PUBLIC_URL`,
+OpenVPN TCP and HTTPS cannot both bind 443. Pick one mux, or put
+HTTPS on another name (origin A).
+
+OpenVPN binds 443: no HTTPS on that port. Origin B is not this.
+
+OpenVPN `port-share`: OpenVPN is the mux. It binds 443 and forwards
+non-OpenVPN TCP to Apache. Apache sees `127.0.0.1`. Fine if you do
+not expect full Connect integration (paste `PUBLIC_URL`,
 `Ovpn-WebAuth`, capability URL). The cubby through Apache still
 works; import the saved `.ovpn` in Connect’s file picker.
-
-Also not origin models: two `ProxyPass` origins, `ServerAlias`.
 
 ```mermaid
 flowchart TB
@@ -195,6 +199,48 @@ flowchart TB
   P --> D
   C -.->|"tunnel"| OV
 ```
+
+HAProxy: HAProxy binds 443. TLS ClientHello goes to Apache on
+loopback; everything else to OpenVPN on a private socket. The
+`.ovpn` still dials 443. Connect paste works (the probe is TLS).
+Copy `/usr/share/doc/bootstash/examples/haproxy-local.cfg` to
+`/etc/haproxy/haproxy-local.cfg`.
+
+Keep `CONFIG` on stock `/etc/haproxy/haproxy.cfg`. In
+`/etc/default/haproxy`:
+
+```
+EXTRAOPTS="-S /run/haproxy-master.sock -f /etc/haproxy/haproxy-local.cfg"
+```
+
+That is `-f haproxy.cfg -f haproxy-local.cfg`. Do not set `CONFIG`
+to the local file alone (no `global`/`defaults` from stock).
+
+Apache must listen only on loopback and enable `mod_remoteip`, or
+anyone who can reach 8443 can spoof client IPs: `Listen
+127.0.0.1:8443`, `a2enmod remoteip`, `RemoteIPProxyProtocol On`.
+The sample vhost’s `*:443` is that loopback port. nginx:
+`listen 127.0.0.1:8443 proxy_protocol`.
+
+```mermaid
+flowchart TB
+  subgraph mux["TCP :443"]
+    H[HAProxy]
+  end
+  subgraph loop["loopback"]
+    P["Apache :8443"]
+    OV["OpenVPN :1194"]
+  end
+  subgraph daemon["bootstashd"]
+    D[HTTP]
+  end
+  C[Connect / browser] --> H
+  H -->|"TLS"| P
+  H -->|"else"| OV
+  P --> D
+```
+
+Also not origin models: two `ProxyPass` origins, `ServerAlias`.
 
 A 301 from the pasted host onto another name is the same class of
 failure as a 302 to `/login`:
