@@ -24,8 +24,10 @@ paste. After Google and the one-time Linux link:
 - None: a short empty message, not the file listing
 
 The imported profile’s display name is `remote [filename]` (first
-OpenVPN `remote` in the file, then the cubby name). The URL you
-paste is still `PUBLIC_URL`. That is not the tunnel endpoint.
+OpenVPN `remote` in the file, then the cubby name). Characters
+outside letters, digits, space, `.`, `_`, and `-` in that label
+become `_`. The URL you paste is still `PUBLIC_URL`. That is not
+the tunnel endpoint.
 
 Cubby GET of `.ovpn` (the listing) is the file as stored, cookie
 only. Save on the import page is an attachment with the Connect
@@ -36,12 +38,28 @@ MIME type.
 Connect cannot send the Google session cookie, so URL import uses a
 one-time `?token=` HTTPS URL (60 seconds, two GETs, then 404).
 Whoever has that URL can fetch **that one** `.ovpn` until it
-expires. The clock starts when the import page is rendered (Chrome’s
+expires or the browser session that minted it is gone. Sign out
+deletes that session. `bootstash unlink` clears its PAM name.
+Another signed-in browser for the same user keeps its own URLs.
+The clock starts when the import page is rendered (Chrome’s
 “Open OpenVPN Connect?” prompt, Connect’s confirm, and a retry).
-60 seconds is that handoff envelope, not “private.”
+60 seconds and two GETs still bound a live session. That window is
+the handoff envelope, not “private.”
 
-The `openvpn://` link is in the HTML tab. A screenshot, a copied
-href, or Android intent extras can leak it for that window.
+The secret is the query string on `openvpn://…?token=`. A
+screenshot, browser history, a copied link, an Android or iOS
+intent, or a reverse-proxy access log can keep it. bootstashd does
+not log the token value. If Apache or nginx records the full
+request URI, omit the query string for `/openvpn-api/profile`.
+Commented recipes are in the sample vhost and nginx location.
+
+One profile: the page runs `location.replace` onto that
+`openvpn://` link. The session cookie is SameSite=Lax, so a
+top-level navigation from another site can open Connect with your
+own profile. That site does not receive the file. A picker does not
+auto-open. It does mint one URL per listed profile when the page is
+rendered (the tap has to be a plain link; fetching the URL on click
+drops Chrome’s user gesture).
 
 Cubby listing links still need the session cookie. They are not
 this URL.

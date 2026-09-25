@@ -67,7 +67,7 @@ func TestOvpnDisplayName(t *testing.T) {
 	if ovpnDisplayName("nyet-tcp.ovpn", nil) != "nyet-tcp" {
 		t.Fatal("no remote")
 	}
-	if ovpnDisplayName("kit/a.ovpn", nil) != "kit/a" {
+	if ovpnDisplayName("kit/a.ovpn", nil) != "kit_a" {
 		t.Fatal("nested")
 	}
 	if ovpnDisplayName("nyet-tcp.ovpn", []byte("client\nremote vpn.example 1194 udp\n")) != "vpn.example [nyet-tcp]" {
@@ -83,6 +83,43 @@ func TestOvpnDisplayName(t *testing.T) {
 	keep := []byte("# OVPN_ACCESS_SERVER_FRIENDLY_NAME=mine\nremote vpn.example\n")
 	if string(ovpnTitledProfile("nyet-tcp.ovpn", keep)) != string(keep) {
 		t.Fatal("leave existing title")
+	}
+}
+
+func TestOvpnCleanLabel(t *testing.T) {
+	cases := []struct {
+		rel, body, want string
+	}{
+		{`a\b.ovpn`, "", `a_b`},
+		{`say"hi.ovpn`, "", `say_hi`},
+		{"a\nb.ovpn", "", "a_b"},
+		{"a\rb.ovpn", "", "a_b"},
+		{"a[b].ovpn", "", "a_b_"},
+		{"a\tb.ovpn", "", "a_b"},
+		{"café.ovpn", "", "caf_"},
+		{"nyet.ovpn", "remote vpn.example\\evil\n", `vpn.example_evil [nyet]`},
+		{"nyet.ovpn", "remote \"quoted\"\n", `_quoted_ [nyet]`},
+		{"nyet.ovpn", "remote host\rname\n", `host [nyet]`},
+		{"nyet.ovpn", "remote [vpn]\n", `_vpn_ [nyet]`},
+		{"nyet.ovpn", "remote host\tname extra\n", `host [nyet]`},
+		{"nyet.ovpn", "remote café.example\n", `caf_.example [nyet]`},
+		{"a;b$(x)`y`.ovpn", "remote host;rm\n", `host_rm [a_b__x__y_]`},
+	}
+	for _, c := range cases {
+		got := ovpnDisplayName(c.rel, []byte(c.body))
+		if got != c.want {
+			t.Errorf("display %q body %q = %q want %q", c.rel, c.body, got, c.want)
+		}
+		for _, r := range got {
+			if r > 127 || r == '\\' || r == '"' || r == '\n' || r == '\r' || r == '\t' {
+				t.Errorf("display %q has raw %q", got, r)
+			}
+		}
+		out := string(ovpnTitledProfile(c.rel, []byte(c.body)))
+		title := "# OVPN_ACCESS_SERVER_FRIENDLY_NAME=" + got + "\n# OVPN_ACCESS_SERVER_PROFILE=" + got + "\nsetenv FRIENDLY_NAME \"" + got + "\"\n"
+		if !strings.HasPrefix(out, title) {
+			t.Errorf("titled %q body %q:\n%s", c.rel, c.body, out)
+		}
 	}
 }
 

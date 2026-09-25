@@ -511,21 +511,13 @@ func (s *Server) serveOpenVPNProfile(w http.ResponseWriter, r *http.Request) {
 	log.Printf("openvpn GET %s pam=%s from %s ua=%q accept=%q: attachment %s type=%s found=%q", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, r.UserAgent(), r.Header.Get("Accept"), rel, ovpnProfileType, found)
 }
 
-func (s *Server) ovpnImportURL(pam, rel string) (template.URL, error) {
-	id, err := s.putOvpnTicket(pam, rel)
-	if err != nil {
-		return "", err
-	}
-	return template.URL("openvpn://import-profile/" + s.config().PublicURL + "/openvpn-api/profile?token=" + id), nil
-}
-
-func (s *Server) tryOvpnImport(r *http.Request, pam, rel string) template.URL {
-	imp, err := s.ovpnImportURL(pam, rel)
+func (s *Server) tryOvpnImport(r *http.Request, pam, rel, sid string) template.URL {
+	id, err := s.putOvpnTicket(pam, rel, sid)
 	if err != nil {
 		log.Printf("openvpn GET %s pam=%s from %s: ticket %s: %v", r.URL.RequestURI(), pam, r.RemoteAddr, rel, err)
 		return ""
 	}
-	return imp
+	return template.URL("openvpn://import-profile/" + s.config().PublicURL + "/openvpn-api/profile?token=" + id)
 }
 
 func (s *Server) renderOvpnHandoff(w http.ResponseWriter, r *http.Request, sess *store.Session, found []string, rel string) {
@@ -537,7 +529,7 @@ func (s *Server) renderOvpnHandoff(w http.ResponseWriter, r *http.Request, sess 
 		data.File = path.Base(rel)
 		data.Download = ovpnProfileDownloadURI(r, rel)
 		if tokens {
-			data.Import = s.tryOvpnImport(r, sess.PAMUser, rel)
+			data.Import = s.tryOvpnImport(r, sess.PAMUser, rel, sess.ID)
 		}
 		log.Printf("openvpn GET %s pam=%s from %s ua=%q: html handoff %s import=%v found=%q", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, r.UserAgent(), rel, data.Import != "", found)
 	case len(found) > 0:
@@ -546,7 +538,7 @@ func (s *Server) renderOvpnHandoff(w http.ResponseWriter, r *http.Request, sess 
 		for _, p := range sorted {
 			ch := ovpnChoice{Name: p, Download: ovpnProfileDownloadURI(r, p)}
 			if tokens {
-				imp := s.tryOvpnImport(r, sess.PAMUser, p)
+				imp := s.tryOvpnImport(r, sess.PAMUser, p, sess.ID)
 				if imp == "" {
 					continue
 				}
@@ -562,11 +554,14 @@ func (s *Server) renderOvpnHandoff(w http.ResponseWriter, r *http.Request, sess 
 }
 
 func (s *Server) serveOpenVPNTicket(w http.ResponseWriter, r *http.Request, id string) {
-	var t ovpnTicket
-	var ok bool
-	if r.Method == http.MethodHead {
-		t, ok = s.peekOvpnTicket(id)
-	} else {
+	t, ok := s.peekOvpnTicket(id)
+	if ok && !s.ovpnTicketSessionOK(t) {
+		s.dropOvpnTicket(id)
+		log.Printf("openvpn token %s pam=%s from %s ua=%q: session gone %s", r.Method, t.pam, r.RemoteAddr, r.UserAgent(), t.rel)
+		http.NotFound(w, r)
+		return
+	}
+	if ok && r.Method != http.MethodHead {
 		t, ok = s.takeOvpnTicket(id)
 	}
 	if !ok {
@@ -645,13 +640,18 @@ func ovpnFileLabel(rel string) string {
 	return name
 }
 
+// ovpnCleanLabel keeps a display label safe inside an OpenVPN comment
+// and a double-quoted setenv value. Anything outside the allowlist,
+// including backslash, becomes '_'.
 func ovpnCleanLabel(s string) string {
 	return strings.Map(func(r rune) rune {
-		switch r {
-		case '\n', '\r', '"', '[', ']':
-			return -1
-		default:
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
 			return r
+		case r == ' ' || r == '.' || r == '_' || r == '-':
+			return r
+		default:
+			return '_'
 		}
 	}, s)
 }

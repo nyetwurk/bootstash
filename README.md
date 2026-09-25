@@ -31,6 +31,10 @@ hostile-tenant environments.
   for a laptop on the LAN,” not an HSM or policy engine
 - A bug or stolen cookie is a bad day for those files. Keep crown jewels
   in OpenBao, `age`/`SOPS`, or not on this host
+- An OpenVPN import URL is temporary read access to that one `.ovpn`.
+  It dies with the browser session that minted it (sign out or
+  `bootstash unlink`), and it can show up in history or proxy logs.
+  See [`OPENVPN.md`](OPENVPN.md)
 - Cubby assets are **temporary**. Expiration (not yet shipped) will
   delete aged HTTP uploads so this does not become a long-term
   archive. Until then, you still should not treat it as backup

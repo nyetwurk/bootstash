@@ -1550,6 +1550,9 @@ func TestOpenVPNProfileImport(t *testing.T) {
 	if strings.Contains(page, `download="`) {
 		t.Fatal("html handoff must not force a save-only download attribute")
 	}
+	if !strings.Contains(page, "location.replace") || !strings.Contains(page, `id="ovpn-open"`) {
+		t.Fatal("single profile must auto-open")
+	}
 	urls := ovpnImportHTTPS(page)
 	if len(urls) != 1 {
 		t.Fatalf("html handoff tokens %d: %s", len(urls), page)
@@ -1735,7 +1738,7 @@ func TestOpenVPNTokenDisable(t *testing.T) {
 		t.Fatalf("download operator off: %d %s", rr.Code, rr.Header().Get("Content-Type"))
 	}
 
-	id, err := s.putOvpnTicket("alice", "client.ovpn")
+	id, err := s.putOvpnTicket("alice", "client.ovpn", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1767,7 +1770,7 @@ func TestOpenVPNTokenDisable(t *testing.T) {
 	if !strings.Contains(page, "Save") {
 		t.Fatalf("html sentinel save: %s", page)
 	}
-	id, err = s2.putOvpnTicket("alice", "client.ovpn")
+	id, err = s2.putOvpnTicket("alice", "client.ovpn", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1814,7 +1817,7 @@ func TestListingShowsDeleteWhenWritable(t *testing.T) {
 
 func TestOvpnTicketExpires(t *testing.T) {
 	s, _, _ := testServer(t)
-	id, err := s.putOvpnTicket("alice", "client.ovpn")
+	id, err := s.putOvpnTicket("alice", "client.ovpn", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1830,6 +1833,67 @@ func TestOvpnTicketExpires(t *testing.T) {
 	s.ovpnMu.Unlock()
 	if _, ok := s.peekOvpnTicket(id); ok {
 		t.Fatal("peek expired")
+	}
+}
+
+func TestOvpnTicketRevokedWithSession(t *testing.T) {
+	s, st, dir := testServer(t)
+	a := linkedSession(t, s, st, "alice")
+	if err := os.WriteFile(filepath.Join(dir, "users", "alice", "client.ovpn"), []byte("client"), 0660); err != nil {
+		t.Fatal(err)
+	}
+	b, err := st.CreateSession("https://accounts.google.com", "sub-alice-2", "alice2@example.com", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetLink(b.Iss, b.Sub, "alice"); err != nil {
+		t.Fatal(err)
+	}
+	b.PAMUser = "alice"
+	if err := st.SaveSession(b); err != nil {
+		t.Fatal(err)
+	}
+	cb := &http.Cookie{Name: s.cookieName(), Value: b.ID}
+
+	mint := func(c *http.Cookie) string {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/openvpn-api/profile", nil)
+		req.Header.Set("Accept", "text/html")
+		req.AddCookie(c)
+		rr := do(s, req)
+		urls := ovpnImportHTTPS(rr.Body.String())
+		if rr.Code != http.StatusOK || len(urls) != 1 {
+			t.Fatalf("mint: %d %s", rr.Code, rr.Body.String())
+		}
+		u, err := url.Parse(urls[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u.Query().Get("token")
+	}
+	tokA := mint(a)
+	tokB := mint(cb)
+	live := do(s, httptest.NewRequest(http.MethodGet, "/openvpn-api/profile?token="+tokA, nil))
+	if live.Code != http.StatusOK || !strings.Contains(live.Body.String(), "client") {
+		t.Fatalf("live redeem: %d %s", live.Code, live.Body.String())
+	}
+	if err := st.DeleteSession(a.Value); err != nil {
+		t.Fatal(err)
+	}
+	gone := do(s, httptest.NewRequest(http.MethodGet, "/openvpn-api/profile?token="+tokA, nil))
+	if gone.Code != http.StatusNotFound {
+		t.Fatalf("after logout: %d", gone.Code)
+	}
+	other := do(s, httptest.NewRequest(http.MethodGet, "/openvpn-api/profile?token="+tokB, nil))
+	if other.Code != http.StatusOK {
+		t.Fatalf("other session: %d %s", other.Code, other.Body.String())
+	}
+	if _, _, err := st.UnlinkPAM("alice"); err != nil {
+		t.Fatal(err)
+	}
+	unlinked := do(s, httptest.NewRequest(http.MethodGet, "/openvpn-api/profile?token="+tokB, nil))
+	if unlinked.Code != http.StatusNotFound {
+		t.Fatalf("after unlink: %d", unlinked.Code)
 	}
 }
 

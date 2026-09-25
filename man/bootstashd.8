@@ -49,7 +49,10 @@ so Connect opens a normal browser instead of a password dialog.
 Then the usual Google sign-in. Once linked, a browser GET of that URL
 is a page that opens
 .B openvpn://import-profile/
-with a one-time token (60 seconds, two GETs, then 404) so Connect can fetch
+with a one-time token (60 seconds, two GETs, then 404; also dead once
+that browser session is gone, sign out or
+.BR unlink )
+so Connect can fetch
 .B client.ovpn
 (or the only
 .BR .ovpn ).
@@ -63,6 +66,8 @@ The imported profile’s display name is the OpenVPN
 .B remote
 host, then the cubby filename in brackets
 (\fIremote\fP [\fIfilename\fP]).
+Characters outside letters, digits, space, dot, underscore, and hyphen
+in that label become an underscore.
 The URL you paste is still
 .BR PUBLIC_URL ;
 that is not the tunnel endpoint.
@@ -70,7 +75,8 @@ Cubby GET of
 .B .ovpn
 is the file as stored (session cookie).
 .B ?token=
-is a capability URL (60 seconds).
+is a capability URL in the query string (60 seconds, while that session
+lives). Do not keep it in proxy access logs.
 .B OVPN_TOKEN=no
 or cubby
 .B .bootstash-no-ovpn-token

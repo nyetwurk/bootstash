@@ -201,6 +201,10 @@ turns that off for the whole site (reload).
 A user can also drop
 .B .bootstash-no-ovpn-token
 in their cubby root.
+An unexpired import URL reads that one profile until it expires or
+the minting session is gone (sign out or
+.BR unlink ).
+The token is in the query string; do not keep it in proxy logs.
 See
 .IR /usr/share/doc/bootstash/OPENVPN.md .
 .TP

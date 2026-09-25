@@ -81,6 +81,7 @@ const ovpnTicketUses = 2
 type ovpnTicket struct {
 	pam  string
 	rel  string
+	sid  string
 	exp  time.Time
 	left int
 }
@@ -438,7 +439,7 @@ func (s *Server) hostCookie(httpsName, httpName string) string {
 	return httpName
 }
 
-func (s *Server) putOvpnTicket(pam, rel string) (string, error) {
+func (s *Server) putOvpnTicket(pam, rel, sid string) (string, error) {
 	id, err := randomHex(16)
 	if err != nil {
 		return "", err
@@ -457,8 +458,21 @@ func (s *Server) putOvpnTicket(pam, rel string) (string, error) {
 	if _, ok := s.ovpnTickets[id]; !ok && len(s.ovpnTickets) >= ovpnMaxTickets {
 		return "", fmt.Errorf("ovpn tickets full")
 	}
-	s.ovpnTickets[id] = ovpnTicket{pam: pam, rel: rel, exp: now.Add(ovpnTicketTTL), left: ovpnTicketUses}
+	s.ovpnTickets[id] = ovpnTicket{pam: pam, rel: rel, sid: sid, exp: now.Add(ovpnTicketTTL), left: ovpnTicketUses}
 	return id, nil
+}
+
+func (s *Server) dropOvpnTicket(id string) {
+	s.ovpnMu.Lock()
+	defer s.ovpnMu.Unlock()
+	delete(s.ovpnTickets, id)
+}
+
+// ovpnTicketSessionOK is true while the minting session still names
+// this PAM user. Logout removes the file. Unlink clears PAMUser.
+func (s *Server) ovpnTicketSessionOK(t ovpnTicket) bool {
+	sess, err := s.store.GetSession(t.sid)
+	return err == nil && sess.PAMUser != "" && sess.PAMUser == t.pam
 }
 
 func (s *Server) peekOvpnTicket(id string) (ovpnTicket, bool) {

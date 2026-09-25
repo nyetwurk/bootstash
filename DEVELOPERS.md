@@ -168,18 +168,27 @@ redirects and would drop it) and sets a short-lived cookie so
 OIDC/`/link` return to this URL. Linked browser GET (`Accept:
 text/html`) is a page with `openvpn://import-profile/` plus a
 one-time `?token=` URL (60s, two GETs, then 404; Connect fetches
-that itself; no session cookie, no `Ovpn-WebAuth`) and a
+that itself; no session cookie, no `Ovpn-WebAuth`). The ticket stores
+the minting session id and 404s when that file is gone or its
+`PAMUser` no longer matches (logout deletes the file; `unlink` clears
+`PAMUser`). Another session for the same user keeps its tickets. The
+URL is read access to that one profile until then. Proxy access logs
+can still record `?token=`. The same page has a
 `?download=1` save link (session cookie; attachment). `OVPN_TOKEN=no`
 skips `Ovpn-WebAuth` and minting. A cubby file
 `.bootstash-no-ovpn-token` skips minting for that user (anonymous
 probe still advertises WebAuth). Import and token bytes get
 `# OVPN_ACCESS_SERVER_FRIENDLY_NAME` /
 `setenv FRIENDLY_NAME` as `remote [filename]` (first OpenVPN
-`remote` in the profile, then the cubby name; the paste origin is
+`remote` in the profile, then the cubby name; letters, digits,
+space, `.`, `_`, `-` only, other runes become `_`; the paste origin is
 still `PUBLIC_URL`). Cubby GET of `.ovpn` stays the file as
 stored. One `.ovpn` (any name) or a single `client.ovpn` among
-several: auto-open. Several without a unique `client.ovpn`: picker
-(tap, no `location.replace`). None: empty message, not `/home/`.
+several: auto-open (`location.replace`; SameSite=Lax top-level GET can
+launch Connect for that user’s own profile; the other site does not
+receive the file). Several without a unique `client.ovpn`: picker
+(one ticket per profile at render, tap, no `location.replace`). None:
+empty message, not `/home/`.
 Non-HTML linked GET (and `?download=1`) serves the picked profile
 as `application/x-openvpn-profile` attachment, or 302 `/home/` if
 there is no unique pick. `?embedded=true` is an HTML page that
@@ -272,7 +281,8 @@ bad PAM, UID 0, DELETE, cubby `0711`/`2770`/`0640`, `links` / `unlink` PAM map,
 session rotate on `/link`, relink drops other sessions, oauth login
 cap, response headers, GET `/home` login redirect, HTML 404 / login-fail
 pages, `.ovpn` MIME, HEAD `/openvpn-api/profile`, REST `Ovpn-WebAuth`
-bounce, import `?token=` (no session, no `Ovpn-WebAuth`, titled
+bounce, import `?token=` (no session cookie, 404 after logout or
+unlink, no `Ovpn-WebAuth`, titled
 `remote [filename]`), picker HTML, `OVPN_TOKEN=no` / cubby
 `.bootstash-no-ovpn-token` (no mint, no probe WebAuth when operator
 off), `mime.types` parse,
