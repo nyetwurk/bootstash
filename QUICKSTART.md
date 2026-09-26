@@ -16,8 +16,7 @@ sudo bootstash provision-google
 sudo systemctl enable --now bootstash
 ```
 
-Package configure does not enable the unit. First install without a
-Google client ID stays down. Configure prints what is still needed.
+What configure does on its own: [below](#what-the-package-does-on-install).
 
 `bootstash provision-google` cannot create the Google OAuth web client on its
 own (`gcloud` has no API for that type).
@@ -54,10 +53,8 @@ packaged copy over your edits. Packaged operator keys stay in
 `/usr/lib/bootstash/default-dist`. OIDC client id/secret and
 `OIDC_CRYPTO` are not in that file.
 
-Configure runs `letsencrypt-deploy sync`, which copies one matching
-`live/` lineage into `/etc/bootstash/certs/<name>/`. The daemon
-derives `CERT_NAME` and `PUBLIC_URL` from that dest. Write those keys
-to pin them.
+Configure runs `letsencrypt-deploy sync` ([TLS](#tls-and-lets-encrypt)).
+Write `CERT_NAME` and `PUBLIC_URL` to pin them.
 
 If you delete the operator file, `dpkg -i` will not put it back.
 Configure restores the packaged pointer from `/usr/lib/bootstash/default`.
@@ -91,11 +88,6 @@ That name must resolve and reach this daemon. If you bind only a
 tunnel NIC but the origin is a public `:443` vhost, the callback
 misses.
 
-- Google sign-in errors:
-  [`README.md`](README.md#oidc-troubleshooting)
-- OpenVPN Connect (paste origin, capability URL):
-  [`OPENVPN.md`](OPENVPN.md)
-
 ## TLS and Let’s Encrypt
 
 Not an ACME client. It uses certs already on disk. Default files,
@@ -113,10 +105,18 @@ when both exist:
 After the copy, the daemon uses that directory as `CERT_NAME` and
 defaults `PUBLIC_URL` from it.
 
-Do **not** point `TLS_CERT` / `TLS_KEY` at `/etc/letsencrypt/live`.
-Treat `certs/` as hook-managed only (see README Known issues).
-`ssl-cert` (`Recommends`) is only for `/etc/ssl/private`. Let’s
-Encrypt files belong under `/etc/bootstash/certs/`.
+Do **not** point `TLS_CERT` / `TLS_KEY` at `/etc/letsencrypt/live`
+or at `/etc/bootstash/certs/`. `certs/` is hook-managed: a later
+renew can refresh dest PEMs (the chosen lineage, or a dest that
+already exists when no name is chosen). Point your own PEMs
+**outside** `certs/`. When both are set, the daemon skips discovery.
+Under `TLS=auto` the hook may still copy `live/` into `certs/`;
+unused dest keys are readable by `bootstash`. With no Let’s Encrypt
+lineage, `certs/` may be empty (HTTP unless you set those keys).
+Renaming the dest (for example `/etc/bootstash/lets-encrypt/`) is
+not supported. `ssl-cert` (`Recommends`) is only for
+`/etc/ssl/private`. Let’s Encrypt files belong under
+`/etc/bootstash/certs/`.
 
 Packaged `TLS=auto` uses those PEMs when both exist.
 

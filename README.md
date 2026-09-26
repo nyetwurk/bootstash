@@ -55,14 +55,8 @@ Typical first session:
 - Once: Linux username and password
 - Download bootstrap files, or paste this origin into OpenVPN Connect
 
-Install is a **public `.deb`**.
-
-## OpenVPN Connect
-
-Paste `PUBLIC_URL` (the origin, not a file path) into Connect. After
-Google, allow the page to open the app. How pick, titles, origin A/B,
-sharing TCP 443 (port-share vs HAProxy), the capability URL, and how
-to turn tokens off: [`OPENVPN.md`](OPENVPN.md).
+Install is a **public `.deb`**. Paste `PUBLIC_URL` into OpenVPN
+Connect: [`OPENVPN.md`](OPENVPN.md).
 
 ## What you can do
 
@@ -78,8 +72,6 @@ to turn tokens off: [`OPENVPN.md`](OPENVPN.md).
 - From a host login: `bootstash put` files into **your** folder (not sudo)
 - Delete files (and empty folders) in **your** folder
 - Sign out (this browser session; the Linux link stays)
-- Later: **expiration** of HTTP-uploaded cubby assets so the tree does
-  not accumulate forever
 
 Later visits only need Google. Changing or disabling the Unix account
 does not drop the map. The Linux password is not used again until an
@@ -91,40 +83,19 @@ username. Identity is the provider’s `(issuer, sub)`.
 
 ## Listen
 
-One or more binds: an **interface**, a **CIDR** of local addresses,
-**any** / one address, or a **Unix socket** (HTTP only, for a local
-proxy).
-
-TLS:
-
-- `TLS=auto` (packaged): HTTPS when both PEMs exist under
-  `/etc/bootstash/certs/` (Let’s Encrypt `live/` copied there)
-- `TLS=no`: cleartext on TCP binds; the hook does not copy `live/`
-  and dest PEMs are removed. A reverse proxy may terminate HTTPS
-
-How to set `LISTEN`, `PUBLIC_URL`, and TLS:
-
-- [`QUICKSTART.md`](QUICKSTART.md)
-- Google sign-in errors: [OIDC troubleshooting](#oidc-troubleshooting)
+Binds (interface, CIDR, address, or a Unix socket) and TLS (`auto` or
+`no`): [`QUICKSTART.md`](QUICKSTART.md). Google sign-in errors:
+[OIDC troubleshooting](#oidc-troubleshooting).
 
 ## Your files vs everyone else's
 
-One data volume (you choose the path):
+One data volume (you choose the path): `users/<linux-username>/` for
+that PAM user. The daemon runs as one service account so it can read
+those trees. HTTP refuses paths outside your folder.
 
-- `users/<linux-username>/` — only that PAM user
-
-The daemon runs as one service account so it can read those trees.
-HTTP refuses paths outside your folder. Other Linux logins cannot
-enter your cubby.
-
-From a login, `bootstash put` copies into `users/<your-name>/` (not
-root). Ordinary `cp` (not `cp -a`) also works. Do not `chown` to
-`bootstash`.
-
-- `$DATA` is `0751` so you can traverse in
-- Parent `users/` is `0711` so you cannot list other cubbies
-- Your cubby is `2770` `you:bootstash` (new files get group `bootstash`)
-- Opening `/home` (or start/SIGHUP) sets group `bootstash` and `0640`
+From a login, `bootstash put` (not sudo) or ordinary `cp` copies into
+your cubby. Modes and what not to `chown`:
+[`QUICKSTART.md`](QUICKSTART.md) (Users and files).
 
 ## What this is not
 
@@ -226,25 +197,8 @@ sends the new URI.
 
 ## Known issues
 
-`/etc/bootstash/certs/` is hook-managed. `letsencrypt-deploy` copies
-one Let’s Encrypt `live/` lineage into `certs/<name>/`. Do not put
-your own PEMs there: a later `live/<name>` renew can refresh dest
-PEMs (the chosen lineage, or a dest that already exists when no
-name is chosen).
-
-With no Let’s Encrypt lineage, `certs/` may be empty. That is HTTP
-unless you set `TLS_CERT` / `TLS_KEY`.
-
-Your own certs:
-
-- Point `TLS_CERT` and `TLS_KEY` at files **outside** `certs/`
-- The daemon skips discovery when both are set
-- Under `TLS=auto`, the hook may still copy `live/` into `certs/`;
-  unused dest keys are readable by `bootstash`
-- `TLS=no` skips the copy and removes dest PEMs
-
-Renaming the dest (for example `/etc/bootstash/lets-encrypt/`) is not
-supported.
+Cert layout, hook-managed `certs/`, and your own PEMs:
+[`QUICKSTART.md`](QUICKSTART.md) (TLS and Let’s Encrypt).
 
 ## License
 

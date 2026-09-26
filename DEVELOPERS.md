@@ -27,15 +27,9 @@ README “Expectations.”
   PAM link. Do not `useradd`. Do not grow a password/app-user table
 - Currently Google only. A later IdP is a new adapter + helper-owned
   keys under `/etc/bootstash/`, not a new session model
-- Not ACME. Packaged `TLS=auto` (`maybe` is the same): HTTPS from
-  `TLS_CERT` / `TLS_KEY` or `/etc/bootstash/certs/<CERT_NAME>/` when
-  both PEMs exist, otherwise HTTP. `TLS=no`: HTTP on TCP binds; the
-  hook does not copy `live/` and removes dest PEMs under `certs/`
-  (unused private key; `live/` stays). Hook pick order: operator
-  `CERT_NAME`, `PUBLIC_URL` host, `live/$(hostname -f)`, or the only
-  `live/` lineage. No rewrite of `/etc/default/bootstash`.
-  `PUBLIC_URL` defaults from dest `CERT_NAME` (`http` when `TLS=no`).
-  Do not read `/etc/letsencrypt/live`. Never copy every `live/` cert.
+- Not ACME. Packaged `TLS=auto` (`maybe` is the same). Hook pick
+  order, dest PEMs, and `PUBLIC_URL`: Config below. Do not read
+  `/etc/letsencrypt/live`. Never copy every `live/` cert.
 - Not `/etc/bootstash.d/`. Not systemd `EnvironmentFile=` or empty
   `ConfigurationDirectory=`
 - `ADMIN_USERS` is a PAM-name seam. It currently grants **no extra
@@ -258,10 +252,9 @@ Link table: `(issuer, sub) → pam_user`. One subject maps
 to at most one PAM user; one PAM user may have several subjects.
 UID 0 is never linked (`POST /link` and the helper refuse it).
 
-`bootstash provision-google` prints the four-step recipe and
-`$PUBLIC_URL/oidc/callback`, then installs the downloaded
-client JSON. It does **not** create the Google web client
-(`gcloud` cannot). It does not create Unix users.
+`bootstash provision-google` prints `$PUBLIC_URL/oidc/callback` and
+installs the JSON (placement: Config). It does **not** create the
+Google web client (`gcloud` cannot) or Unix users.
 
 `bootstash links` prints `user issuer sub` (not email).
 `bootstash unlink USER` drops every `(issuer, sub)` mapped to that
