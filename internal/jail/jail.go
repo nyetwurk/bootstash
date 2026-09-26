@@ -273,7 +273,7 @@ func (r *Root) walk(parts []string, flags int, mode uint32) (int, []string, erro
 				n, lerr := unix.Readlinkat(dirfd, name, buf)
 				unix.Close(dirfd)
 				if lerr != nil {
-					return -1, nil, mapOpenErr(err)
+					return -1, nil, err
 				}
 				target := string(buf[:n])
 				if strings.HasPrefix(target, "/") {
@@ -288,7 +288,7 @@ func (r *Root) walk(parts []string, flags int, mode uint32) (int, []string, erro
 				return -1, joined, nil
 			}
 			unix.Close(dirfd)
-			return -1, nil, mapOpenErr(err)
+			return -1, nil, err
 		}
 		unix.Close(dirfd)
 		dirfd = fd
@@ -319,16 +319,6 @@ func isSymlinkAt(dirfd int, name string) bool {
 		return false
 	}
 	return st.Mode&unix.S_IFMT == unix.S_IFLNK
-}
-
-func mapOpenErr(err error) error {
-	if err == syscall.ENOENT {
-		return err
-	}
-	if err == syscall.EACCES || err == syscall.EPERM {
-		return err
-	}
-	return err
 }
 
 func components(rel string) ([]string, error) {
