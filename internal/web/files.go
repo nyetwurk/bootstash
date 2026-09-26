@@ -65,27 +65,23 @@ func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet, http.MethodHead:
 		s.serveGet(w, r, root, prefix, rel)
 	case http.MethodPut:
-		if !s.requireWrite(w, r) {
+		if !s.requireCSRF(w, r) {
 			return
 		}
 		s.servePut(w, r, root, rel, sess)
 	case http.MethodPost:
-		if !s.requireWrite(w, r) {
+		if !s.requireCSRF(w, r) {
 			return
 		}
 		s.servePost(w, r, root, prefix, rel, sess)
 	case http.MethodDelete:
-		if !s.requireWrite(w, r) {
+		if !s.requireCSRF(w, r) {
 			return
 		}
 		s.serveDelete(w, r, root, rel, "")
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
-}
-
-func (s *Server) requireWrite(w http.ResponseWriter, r *http.Request) bool {
-	return s.requireCSRF(w, r)
 }
 
 // isAdmin is the current seam: ADMIN_USERS in operator config, linked PAM name, live config.

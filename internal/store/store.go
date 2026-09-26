@@ -376,6 +376,23 @@ func (s *Store) clearSessionPAMLocked(pam string, links []Link) (int, error) {
 	for _, l := range links {
 		want[key{l.Issuer, l.Subject}] = struct{}{}
 	}
+	return s.clearMatchingSessionsLocked(func(sess *Session) bool {
+		_, subj := want[key{sess.Iss, sess.Sub}]
+		return (sess.PAMUser == pam || subj) && sess.PAMUser != ""
+	})
+}
+
+func (s *Store) clearSubjectPAMLocked(iss, sub, exceptID string) error {
+	_, err := s.clearMatchingSessionsLocked(func(sess *Session) bool {
+		return sess.ID != exceptID && sess.Iss == iss && sess.Sub == sub && sess.PAMUser != ""
+	})
+	return err
+}
+
+// clearMatchingSessionsLocked clears PAMUser on each sessions-*.json
+// for which match returns true. n is how many were cleared, including
+// when a later file fails.
+func (s *Store) clearMatchingSessionsLocked(match func(*Session) bool) (int, error) {
 	ents, err := os.ReadDir(s.dir)
 	if err != nil {
 		return 0, err
@@ -386,8 +403,7 @@ func (s *Store) clearSessionPAMLocked(pam string, links []Link) (int, error) {
 		if !strings.HasPrefix(name, "sessions-") || !strings.HasSuffix(name, ".json") {
 			continue
 		}
-		path := filepath.Join(s.dir, name)
-		b, err := os.ReadFile(path)
+		b, err := os.ReadFile(filepath.Join(s.dir, name))
 		if err != nil {
 			return n, err
 		}
@@ -395,11 +411,7 @@ func (s *Store) clearSessionPAMLocked(pam string, links []Link) (int, error) {
 		if err := json.Unmarshal(b, &sess); err != nil {
 			return n, fmt.Errorf("session %s: %w", name, err)
 		}
-		_, subj := want[key{sess.Iss, sess.Sub}]
-		if sess.PAMUser != pam && !subj {
-			continue
-		}
-		if sess.PAMUser == "" {
+		if !match(&sess) {
 			continue
 		}
 		sess.PAMUser = ""
@@ -409,36 +421,6 @@ func (s *Store) clearSessionPAMLocked(pam string, links []Link) (int, error) {
 		n++
 	}
 	return n, nil
-}
-
-func (s *Store) clearSubjectPAMLocked(iss, sub, exceptID string) error {
-	ents, err := os.ReadDir(s.dir)
-	if err != nil {
-		return err
-	}
-	for _, e := range ents {
-		name := e.Name()
-		if !strings.HasPrefix(name, "sessions-") || !strings.HasSuffix(name, ".json") {
-			continue
-		}
-		path := filepath.Join(s.dir, name)
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		var sess Session
-		if err := json.Unmarshal(b, &sess); err != nil {
-			return fmt.Errorf("session %s: %w", name, err)
-		}
-		if sess.ID == exceptID || sess.Iss != iss || sess.Sub != sub || sess.PAMUser == "" {
-			continue
-		}
-		sess.PAMUser = ""
-		if err := s.saveSession(&sess); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (s *Store) readLinks() (*linkFile, error) {

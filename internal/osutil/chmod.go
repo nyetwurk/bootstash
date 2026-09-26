@@ -20,15 +20,6 @@ func Confine(root, path string) (string, error) {
 	return path, nil
 }
 
-// ChmodIn is Chmod after the path is shown to stay under root.
-func ChmodIn(root, path string, mode os.FileMode) error {
-	path, err := Confine(root, path)
-	if err != nil {
-		return err
-	}
-	return Chmod(path, mode)
-}
-
 // Chmod sets mode. Logs when the Unix permission bits actually change.
 func Chmod(path string, mode os.FileMode) error {
 	st, err := os.Lstat(path)

@@ -98,9 +98,6 @@ func New(cfg *config.Config, st *store.Store, idp IDP, pam pamauth.Authenticator
 	return s, nil
 }
 
-// Handler returns the HTTP handler (the server itself).
-func (s *Server) Handler() http.Handler { return s }
-
 func (s *Server) config() *config.Config {
 	return s.cfg.Load().(*config.Config)
 }

@@ -45,14 +45,6 @@ func TestConfine(t *testing.T) {
 	}
 }
 
-func TestChmodInRejectsEscape(t *testing.T) {
-	dir := t.TempDir()
-	outside := filepath.Join(filepath.Dir(dir), "outside")
-	if err := ChmodIn(dir, outside, 0600); err == nil {
-		t.Fatal("escape")
-	}
-}
-
 func TestUnixBitsSetgid(t *testing.T) {
 	if UnixBits(os.ModeSetgid|0770) != 0o2770 {
 		t.Fatalf("%04o", UnixBits(os.ModeSetgid|0770))
