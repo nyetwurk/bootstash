@@ -24,9 +24,7 @@ override_dh_auto_build:
 	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w $(VERSION_LDFLAGS)" -o bin/bootstash ./cmd/bootstash
 
 override_dh_auto_test:
-	go test ./...
-	python3 scripts/test-letsencrypt-deploy.py
-	python3 scripts/test-release.py
+	$(MAKE) test
 
 override_dh_auto_install:
 	install -d debian/bootstash/usr/sbin
