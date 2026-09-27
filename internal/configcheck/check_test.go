@@ -41,6 +41,18 @@ func TestSummaryIncludesAdmins(t *testing.T) {
 	}
 }
 
+func TestNoticeEmptyAllowlist(t *testing.T) {
+	if Notice(&config.Config{RequirePAMLink: true}) != "" {
+		t.Fatal("default link required")
+	}
+	if Notice(&config.Config{RequirePAMLink: false, AllowedEmails: []string{"a@b.co"}}) != "" {
+		t.Fatal("listed")
+	}
+	if Notice(&config.Config{RequirePAMLink: false}) == "" {
+		t.Fatal("expected warning")
+	}
+}
+
 func TestCheckBadListen(t *testing.T) {
 	dir := t.TempDir()
 	ov := filepath.Join(dir, "config")

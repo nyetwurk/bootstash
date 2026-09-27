@@ -79,11 +79,14 @@ const ovpnMaxTickets = 1024
 const ovpnTicketUses = 2
 
 type ovpnTicket struct {
-	pam  string
-	rel  string
-	sid  string
-	exp  time.Time
-	left int
+	pam    string
+	homeID string
+	iss    string
+	sub    string
+	rel    string
+	sid    string
+	exp    time.Time
+	left   int
 }
 
 // New constructs a server. cfg must already be Ready() for production start.
@@ -158,6 +161,17 @@ func ensureLayout(data string) error {
 	// umask 007 would strip o+x from MkdirAll; the cubby owner must
 	// be able to traverse users/ without listing it.
 	if err := osutil.Chmod(users, 0711); err != nil {
+		return err
+	}
+	// home/ is setgid and sticky, with other write+execute and no other
+	// read: the caller can create a cubby without being in UNIX_GROUP
+	// and without listing the others. Sticky so they cannot unlink
+	// someone else's. The daemon does not create those cubbies.
+	home := filepath.Join(data, "home")
+	if err := os.MkdirAll(home, 0770); err != nil {
+		return err
+	}
+	if err := osutil.Chmod(home, os.ModeSetgid|os.ModeSticky|0773); err != nil {
 		return err
 	}
 	return os.MkdirAll(filepath.Join(data, "state"), 0700)
@@ -297,7 +311,7 @@ func (s *Server) entryPath(r *http.Request) string {
 	if sess == nil {
 		return "/login"
 	}
-	if sess.PAMUser == "" {
+	if !s.sessionHasCubby(sess) {
 		return "/link"
 	}
 	return "/home/"
@@ -437,6 +451,10 @@ func (s *Server) hostCookie(httpsName, httpName string) string {
 }
 
 func (s *Server) putOvpnTicket(pam, rel, sid string) (string, error) {
+	return s.mintOvpnTicket(ovpnTicket{pam: pam, rel: rel, sid: sid})
+}
+
+func (s *Server) mintOvpnTicket(t ovpnTicket) (string, error) {
 	id, err := randomHex(16)
 	if err != nil {
 		return "", err
@@ -447,15 +465,17 @@ func (s *Server) putOvpnTicket(pam, rel, sid string) (string, error) {
 		s.ovpnTickets = make(map[string]ovpnTicket)
 	}
 	now := time.Now()
-	for k, t := range s.ovpnTickets {
-		if now.After(t.exp) {
+	for k, old := range s.ovpnTickets {
+		if now.After(old.exp) {
 			delete(s.ovpnTickets, k)
 		}
 	}
 	if _, ok := s.ovpnTickets[id]; !ok && len(s.ovpnTickets) >= ovpnMaxTickets {
 		return "", fmt.Errorf("ovpn tickets full")
 	}
-	s.ovpnTickets[id] = ovpnTicket{pam: pam, rel: rel, sid: sid, exp: now.Add(ovpnTicketTTL), left: ovpnTicketUses}
+	t.exp = now.Add(ovpnTicketTTL)
+	t.left = ovpnTicketUses
+	s.ovpnTickets[id] = t
 	return id, nil
 }
 
@@ -465,11 +485,18 @@ func (s *Server) dropOvpnTicket(id string) {
 	delete(s.ovpnTickets, id)
 }
 
-// ovpnTicketSessionOK is true while the minting session still names
-// this PAM user. Logout removes the file. Unlink clears PAMUser.
+// ovpnTicketSessionOK is true while the minting session still reaches
+// the same cubby. Logout removes the file. Unlink clears PAMUser on
+// a PAM cubby. An email cubby stays valid while (issuer, sub) matches.
 func (s *Server) ovpnTicketSessionOK(t ovpnTicket) bool {
 	sess, err := s.store.GetSession(t.sid)
-	return err == nil && sess.PAMUser != "" && sess.PAMUser == t.pam
+	if err != nil {
+		return false
+	}
+	if t.pam != "" {
+		return sess.PAMUser != "" && sess.PAMUser == t.pam
+	}
+	return t.iss != "" && sess.Iss == t.iss && sess.Sub == t.sub
 }
 
 func (s *Server) peekOvpnTicket(id string) (ovpnTicket, bool) {

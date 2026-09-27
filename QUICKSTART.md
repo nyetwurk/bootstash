@@ -47,7 +47,8 @@ file; do not paste them into `/etc/default/bootstash`.
 ## Config
 
 `/etc/default/bootstash` is created on install with commented `DATA`,
-`LISTEN`, `PUBLIC_URL`, and `ADMIN_USERS`. Add only what you need to
+`LISTEN`, `PUBLIC_URL`, `ADMIN_USERS`, `ALLOWED_EMAILS`, and
+`REQUIRE_PAM_LINK`. Add only what you need to
 change. It is not a conffile: `dpkg` will not ask you to merge a new
 packaged copy over your edits. Packaged operator keys stay in
 `/usr/lib/bootstash/default-dist`. OIDC client id/secret and
@@ -166,6 +167,10 @@ account does not drop the map.
 After link, that Unix user can put files into the cubby (not root).
 Every name on the command is a source. `-t` is the only directory
 inside the cubby.
+With `REQUIRE_PAM_LINK=0`, `put` writes one allowlisted address’s
+cubby instead (`-email` when more than one address is listed).
+Do not add that user to group `bootstash`. Files stay owned by
+that Unix user:
 
 ```bash
 bootstash put ./id_ed25519

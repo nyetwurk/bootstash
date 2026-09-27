@@ -4,6 +4,7 @@
 package web
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nyet/bootstash/internal/config"
 	"github.com/nyet/bootstash/internal/osutil"
 	"github.com/nyet/bootstash/internal/pamauth"
 	"golang.org/x/sys/unix"
@@ -96,14 +98,28 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		s.loginFail(w, http.StatusBadRequest, "Sign-in failed. Try again.")
 		return
 	}
-	sess, err := s.store.CreateSession(id.Issuer, id.Subject, id.Email, sessionTTL)
+	if err := s.gateIdentity(id); err != nil {
+		if errors.Is(err, errLoginDenied) {
+			log.Printf("login rejected email=%s verified=%v sub=%s from %s", id.Email, id.EmailVerified, id.Subject, r.RemoteAddr)
+			s.loginFail(w, http.StatusForbidden, "This account is not allowed to sign in.")
+			return
+		}
+		log.Printf("login gate: %v", err)
+		s.loginFail(w, http.StatusInternalServerError, "Something went wrong.")
+		return
+	}
+	email := id.Email
+	if n, nerr := config.NormalizeEmail(id.Email); nerr == nil {
+		email = n
+	}
+	sess, err := s.store.CreateSession(id.Issuer, id.Subject, email, sessionTTL)
 	if err != nil {
 		log.Printf("login session: %v", err)
 		s.loginFail(w, http.StatusInternalServerError, "Something went wrong.")
 		return
 	}
 	s.setSessionCookie(w, sess)
-	if sess.PAMUser == "" {
+	if !s.sessionHasCubby(sess) {
 		log.Printf("login oidc sub=%s email=%s from %s (unlinked)", id.Subject, id.Email, r.RemoteAddr)
 		http.Redirect(w, r, s.afterLogin(r, false), http.StatusFound)
 		return
@@ -215,6 +231,7 @@ func (s *Server) fixCubbies() {
 		}
 		s.fixCubbyTree(filepath.Join(s.usersDir(), n))
 	}
+	s.fixEmailCubbies()
 }
 
 func (s *Server) usersDir() string {
@@ -268,66 +285,15 @@ func (s *Server) unixGid() int {
 	return g
 }
 
-// prepareCubbyRead fixes the cubby root, the path about to be read,
+// prepareCubbyRead fixes the PAM cubby root, the path about to be read,
 // and (for a directory) its immediate children. Not a full-tree walk.
+// It may create users/<pam> and chown that directory to the Unix user.
 func (s *Server) prepareCubbyRead(pamUser, rel string) {
 	if err := s.ensureUserDir(pamUser); err != nil {
 		log.Printf("cubby %s: %v", pamUser, err)
 		return
 	}
-	users := s.usersDir()
-	cubby := filepath.Join(users, pamUser)
-	if _, err := osutil.Confine(users, cubby); err != nil {
-		return
-	}
-	gid := s.unixGid()
-	usersfd, err := openDir(users)
-	if err != nil {
-		return
-	}
-	defer unix.Close(usersfd)
-	fd, err := unix.Openat(usersfd, pamUser, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-	if err != nil {
-		return
-	}
-	acc := cubby
-	if rel != "" && rel != "." {
-		if !filepath.IsLocal(rel) {
-			unix.Close(fd)
-			return
-		}
-		for _, p := range strings.Split(rel, "/") {
-			if p == "" || p == "." {
-				continue
-			}
-			if !filepath.IsLocal(p) {
-				unix.Close(fd)
-				return
-			}
-			next := filepath.Join(acc, p)
-			if _, err := osutil.Confine(users, next); err != nil {
-				unix.Close(fd)
-				return
-			}
-			nfd, oerr := unix.Openat(fd, p, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-			unix.Close(fd)
-			if oerr != nil {
-				return
-			}
-			fd = nfd
-			acc = next
-			s.fixCubbyFD(fd, acc, gid)
-		}
-	} else {
-		s.fixCubbyFD(fd, acc, gid)
-	}
-	var st unix.Stat_t
-	if err := unix.Fstat(fd, &st); err != nil || st.Mode&unix.S_IFMT != unix.S_IFDIR {
-		unix.Close(fd)
-		return
-	}
-	s.fixCubbyDirChildren(fd, acc, users, gid)
-	unix.Close(fd)
+	s.prepareExistingCubby(s.usersDir(), pamUser, rel)
 }
 
 func cubbyModeFD(fd int, path string) error {
@@ -348,19 +314,7 @@ func (s *Server) fixCubbyTree(root string) {
 	if err != nil || rel == "." || !filepath.IsLocal(rel) {
 		return
 	}
-	gid := s.unixGid()
-	usersfd, err := openDir(users)
-	if err != nil {
-		return
-	}
-	defer unix.Close(usersfd)
-	fd, err := unix.Openat(usersfd, rel, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-	if err != nil {
-		return
-	}
-	defer unix.Close(fd)
-	s.fixCubbyFD(fd, filepath.Join(users, rel), gid)
-	s.fixCubbyDirChildren(fd, filepath.Join(users, rel), users, gid)
+	s.fixExistingCubby(users, rel)
 }
 
 func (s *Server) fixCubbyDirChildren(dirfd int, path, users string, gid int) {
@@ -395,17 +349,17 @@ func (s *Server) fixCubbyDirChildren(dirfd int, path, users string, gid int) {
 			continue
 		}
 		if e.IsDir() {
-			s.fixCubbyFD(fd, child, gid)
+			s.fixCubbyFD(fd, child, users, gid)
 			s.fixCubbyDirChildren(fd, child, users, gid)
 		} else {
-			s.fixCubbyFD(fd, child, gid)
+			s.fixCubbyFD(fd, child, users, gid)
 		}
 		unix.Close(fd)
 	}
 }
 
-func (s *Server) fixCubbyFD(fd int, path string, gid int) {
-	path, err := osutil.Confine(s.usersDir(), filepath.Clean(path))
+func (s *Server) fixCubbyFD(fd int, path, confine string, gid int) {
+	path, err := osutil.Confine(confine, filepath.Clean(path))
 	if err != nil {
 		return
 	}

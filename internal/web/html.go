@@ -22,15 +22,18 @@ var templateFS embed.FS
 var pages = template.Must(template.ParseFS(templateFS, "templates/*.html"))
 
 type pageData struct {
-	Title     string
-	Error     string
-	Hint      string
-	Crumbs    []crumb
-	Action    string
-	CanWrite  bool
-	SignedIn  bool
-	PAMUser   string
-	OIDCUser  string
+	Title    string
+	Error    string
+	Hint     string
+	Crumbs   []crumb
+	Action   string
+	CanWrite bool
+	SignedIn bool
+	PAMUser  string
+	OIDCUser string
+	// NeedLink is the “Not linked yet” prompt. It stays off when
+	// REQUIRE_PAM_LINK=0, because that session already has a cubby.
+	NeedLink  bool
 	File      string
 	Download  string
 	Import    template.URL
@@ -74,6 +77,9 @@ func (s *Server) render(w http.ResponseWriter, name string, data pageData) {
 }
 
 func (s *Server) renderAt(w http.ResponseWriter, name string, data pageData, status int) {
+	if data.SignedIn && data.PAMUser == "" && s.config().RequirePAMLink {
+		data.NeedLink = true
+	}
 	if data.Title == "" {
 		data.Title = "bootstash"
 	}

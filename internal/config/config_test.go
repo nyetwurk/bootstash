@@ -505,10 +505,74 @@ func TestBuiltinDefaultDist(t *testing.T) {
 	if cfg.PublicURL != "" || cfg.CertName != "" || cfg.TLSCert != "" || cfg.GoogleClientID != "" {
 		t.Fatalf("empty %+v", cfg)
 	}
+	if !cfg.RequirePAMLink || len(cfg.AllowedEmails) != 0 {
+		t.Fatalf("pam link %+v emails %#v", cfg.RequirePAMLink, cfg.AllowedEmails)
+	}
 
 	for _, key := range []string{"OIDC_GOOGLE_CLIENT_ID", "OIDC_GOOGLE_CLIENT_SECRET", "OIDC_CRYPTO"} {
 		if _, ok := builtin[key]; ok {
 			t.Fatalf("default-dist must not set %s", key)
 		}
+	}
+}
+
+func TestAllowedEmailsRepeatableAndCubbyID(t *testing.T) {
+	dir := t.TempDir()
+	op := filepath.Join(dir, "op")
+	body := "ALLOWED_EMAILS=Alice@Gmail.com\nALLOWED_EMAILS=bob@gmail.com, alice@gmail.com\nREQUIRE_PAM_LINK=0\n"
+	if err := os.WriteFile(op, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(filepath.Join(dir, "missing-dist"), op, filepath.Join(dir, "nosecrets"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RequirePAMLink {
+		t.Fatal("REQUIRE_PAM_LINK=0")
+	}
+	if len(cfg.AllowedEmails) != 2 || cfg.AllowedEmails[0] != "alice@gmail.com" || cfg.AllowedEmails[1] != "bob@gmail.com" {
+		t.Fatalf("%#v", cfg.AllowedEmails)
+	}
+	a, err := EmailCubbyID("Alice@Gmail.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := EmailCubbyID("alice@gmail.com")
+	if err != nil || a != b || len(a) != 64 {
+		t.Fatalf("id %s %s %v", a, b, err)
+	}
+	other, err := EmailCubbyID("bob@gmail.com")
+	if err != nil || other == a {
+		t.Fatalf("bob id %s", other)
+	}
+}
+
+func TestAllowedEmailsRejectsBadAddress(t *testing.T) {
+	dir := t.TempDir()
+	op := filepath.Join(dir, "op")
+	if err := os.WriteFile(op, []byte("ALLOWED_EMAILS=not-an-email\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(filepath.Join(dir, "missing-dist"), op, filepath.Join(dir, "nosecrets")); err == nil {
+		t.Fatal("expected invalid address")
+	}
+}
+
+func TestSecretsCannotSetAllowedEmails(t *testing.T) {
+	dir := t.TempDir()
+	op := filepath.Join(dir, "op")
+	if err := os.WriteFile(op, []byte("ALLOWED_EMAILS=alice@gmail.com\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sec := filepath.Join(dir, "sec")
+	if err := os.WriteFile(sec, []byte("ALLOWED_EMAILS=evil@gmail.com\nOIDC_GOOGLE_CLIENT_ID=cid\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(filepath.Join(dir, "missing-dist"), op, sec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.AllowedEmails) != 1 || cfg.AllowedEmails[0] != "alice@gmail.com" {
+		t.Fatalf("%#v", cfg.AllowedEmails)
 	}
 }

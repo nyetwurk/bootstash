@@ -9,7 +9,9 @@ first-run artifacts — from whatever browser you have on the road.
 It is not a secrets engine (no unseal, leases, or KV API). It is not
 a VPN: it hands a profile to Connect; it does not terminate tunnels.
 Bind wherever you want (loopback, LAN, a tunnel NIC, later a public
-address). Auth is currently Google OIDC linked to PAM; other issuers
+address). Auth is currently Google OIDC. The packaged default links
+that login to PAM. `REQUIRE_PAM_LINK=0` with `ALLOWED_EMAILS` gives
+each verified address its own cubby and no Unix password. Other issuers
 can be added later.
 
 - **Install and first run:** [`QUICKSTART.md`](QUICKSTART.md)
@@ -78,8 +80,10 @@ does not drop the map. The Linux password is not used again until an
 operator runs `bootstash unlink` (that user's subjects must link
 again).
 
-Your Google email is not a folder name. Folders follow the linked Linux
-username. Identity is the provider’s `(issuer, sub)`.
+Your Google email is not a folder name. With the packaged default,
+folders follow the linked Linux username. With `REQUIRE_PAM_LINK=0`,
+each verified address is its own cubby, named by the SHA-256 of that
+address. Identity is the provider’s `(issuer, sub)`.
 
 ## Listen
 
@@ -145,7 +149,10 @@ will send). Reload after changing `PUBLIC_URL` or installing
 - `TLS=no` keeps TCP binds on HTTP. Write `PUBLIC_URL` as `https://…`
   when a proxy terminates TLS
 - Google email is not a folder name. After OIDC, `POST /link` with an
-  existing Linux user (not root)
+  existing Linux user (not root), unless `REQUIRE_PAM_LINK=0`
+- `ALLOWED_EMAILS` empty: whoever the Google client admits. If any
+  address is set, an unlisted or unverified account is rejected at
+  login and does not reach `/link`
 - Changing or disabling the Unix account does not drop the map;
   `bootstash unlink` does
 - Extra DNS names are a second origin. HTTPS cookies are `__Host-`

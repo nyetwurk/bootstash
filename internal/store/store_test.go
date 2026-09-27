@@ -4,6 +4,7 @@
 package store
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -398,5 +399,28 @@ func TestCreateSessionUnlinkRace(t *testing.T) {
 		if got.PAMUser == "alice" {
 			t.Fatalf("session %s still pam=alice after unlink", got.ID)
 		}
+	}
+}
+
+func TestBindSubjectPerAddress(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	iss := "https://accounts.google.com"
+	if err := st.BindSubject("alice@gmail.com", iss, "sub-a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.BindSubject("alice@gmail.com", iss, "sub-a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.BindSubject("bob@gmail.com", iss, "sub-b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.BindSubject("alice@gmail.com", iss, "sub-other"); !errors.Is(err, ErrSubjectMismatch) {
+		t.Fatalf("mismatch: %v", err)
+	}
+	if err := st.BindSubject("bob@gmail.com", iss, "sub-b"); err != nil {
+		t.Fatal(err)
 	}
 }

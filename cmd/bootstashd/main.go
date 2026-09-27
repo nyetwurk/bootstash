@@ -47,7 +47,13 @@ func main() {
 	}
 	if *check {
 		fmt.Fprintf(os.Stderr, "configuration ok %s\n", configcheck.Summary(cfg))
+		if n := configcheck.Notice(cfg); n != "" {
+			fmt.Fprintln(os.Stderr, "bootstash:", n)
+		}
 		return
+	}
+	if n := configcheck.Notice(cfg); n != "" {
+		log.Printf("bootstash: %s", n)
 	}
 
 	st, err := store.Open(cfg.Data)

@@ -275,6 +275,27 @@ or copy into
 .RB ( 2770
 .IR name:bootstash )
 without listing other cubbies.
+.I home/
+is
+.B 03773
+.B bootstash:bootstash
+(setgid, sticky, other can create and traverse, other cannot list).
+The caller is not a member of group
+.BR bootstash .
+With
+.B REQUIRE_PAM_LINK=0
+an unlinked session uses
+.IR home/<id>/ ,
+where
+.I id
+is the lowercase hex SHA-256 of the trimmed, lowercased verified
+email. The address is not a directory name.
+.B bootstash put
+creates that directory as the caller
+.RB ( 2770 ).
+The daemon does not create it and does not change its owner.
+A linked session still uses
+.IR users/<name>/ .
 Start, SIGHUP, and
 .B /home
 GET/HEAD set cubby files to group
@@ -334,6 +355,48 @@ are accepted). Default 32MiB.
 .B UNIX_GROUP
 Group for Unix sockets. Default
 .BR bootstash .
+.TP
+.B ALLOWED_EMAILS
+Repeatable verified-address allowlist (comma- or space-separated on
+each line). If the operator file mentions the key, those lines
+replace the packaged list, and every line counts. Addresses are
+trimmed and lowercased. Gmail dots and plus-tags are not folded.
+Empty or unset: whoever the Google client admits. If any address is
+set, only a verified listed address may finish sign-in. Others get
+a login error and do not reach
+.BR /link .
+The first success for an address stores
+.B (issuer, sub)
+in
+.IR $DATA/state/subjects.json .
+A later sign-in for that address must be the same subject.
+SIGHUP re-reads the list. An unlinked session whose address was
+removed is cut off
+.BR /home/ .
+A session that already has a Unix user keeps
+.IR users/<name>/ .
+Secrets cannot set this key.
+.TP
+.B REQUIRE_PAM_LINK
+.B 1
+(default) requires
+.B POST /link
+before
+.BR /home/ .
+.B 0
+lets an unlinked verified-email session use
+.IR home/<id>/
+with no Unix password.
+.B POST /link
+still works, and a linked session still uses
+.IR users/<name>/ .
+Packaged default is
+.BR 1 .
+With
+.B 0
+and an empty
+.BR ALLOWED_EMAILS ,
+check-config warns: any verified Google account gets a cubby.
 .TP
 .B ADMIN_USERS
 Comma- or space-separated PAM usernames treated as operators (the

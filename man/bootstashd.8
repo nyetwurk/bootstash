@@ -205,8 +205,10 @@ not a conffile. Commented
 .BR DATA ,
 .BR LISTEN ,
 .BR PUBLIC_URL ,
+.BR ADMIN_USERS ,
+.BR ALLOWED_EMAILS ,
 and
-.BR ADMIN_USERS
+.BR REQUIRE_PAM_LINK
 on first create. See
 .BR bootstash (5).
 .TP
@@ -231,6 +233,20 @@ so that user can
 (or copy with
 .BR cp )
 from a shell without listing other cubbies.
+.I home/
+is
+.B 03773
+.B bootstash:bootstash
+(setgid, sticky, other can create and traverse, other cannot list).
+With
+.B REQUIRE_PAM_LINK=0
+an unlinked session uses
+.IR home/<id>/ ,
+created by
+.B bootstash put
+as that user.
+A linked session still uses
+.IR users/<name>/ .
 .B bootstash put
 must run as the cubby owner, not root; files are
 .B 0660

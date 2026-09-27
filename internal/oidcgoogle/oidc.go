@@ -20,10 +20,11 @@ const (
 
 // Identity is an OIDC (issuer, sub) plus display fields.
 type Identity struct {
-	Issuer  string
-	Subject string
-	Email   string
-	Name    string
+	Issuer        string
+	Subject       string
+	Email         string
+	EmailVerified bool
+	Name          string
 }
 
 // Provider performs the Google authorization-code flow.
@@ -110,8 +111,9 @@ func (p *Provider) Exchange(ctx context.Context, code, nonce, redirectURL, verif
 		return nil, fmt.Errorf("nonce mismatch")
 	}
 	var claims struct {
-		Email string `json:"email"`
-		Name  string `json:"name"`
+		Email         string `json:"email"`
+		EmailVerified bool   `json:"email_verified"`
+		Name          string `json:"name"`
 	}
 	_ = idt.Claims(&claims)
 	iss := idt.Issuer
@@ -119,9 +121,10 @@ func (p *Provider) Exchange(ctx context.Context, code, nonce, redirectURL, verif
 		iss = Issuer
 	}
 	return &Identity{
-		Issuer:  iss,
-		Subject: idt.Subject,
-		Email:   claims.Email,
-		Name:    claims.Name,
+		Issuer:        iss,
+		Subject:       idt.Subject,
+		Email:         claims.Email,
+		EmailVerified: claims.EmailVerified,
+		Name:          claims.Name,
 	}, nil
 }

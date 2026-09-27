@@ -28,7 +28,7 @@ import (
 
 func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 	sess := s.session(r)
-	if sess == nil || sess.PAMUser == "" {
+	if sess == nil || !s.sessionHasCubby(sess) {
 		if r.Method == http.MethodGet || r.Method == http.MethodHead {
 			loc := "/login"
 			if sess != nil {
@@ -47,7 +47,7 @@ func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	rel := strings.TrimPrefix(r.URL.Path, prefix+"/")
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {
-		s.prepareCubbyRead(sess.PAMUser, rel)
+		s.prepareSessionCubby(sess, rel)
 	}
 	rootPath, err := s.jailPath(sess)
 	if err != nil {
@@ -93,11 +93,34 @@ func (s *Server) isAdmin(sess *store.Session) bool {
 	return s.config().IsAdmin(sess.PAMUser)
 }
 
+func (s *Server) prepareSessionCubby(sess *store.Session, rel string) {
+	if sess == nil {
+		return
+	}
+	if sess.PAMUser != "" {
+		s.prepareCubbyRead(sess.PAMUser, rel)
+		return
+	}
+	if id, ok := s.emailHomeID(sess); ok {
+		s.prepareEmailCubby(id, rel)
+	}
+}
+
 func (s *Server) jailPath(sess *store.Session) (string, error) {
-	if !pamauth.ValidUsername(sess.PAMUser) || !filepath.IsLocal(sess.PAMUser) {
+	if sess == nil {
 		return "", os.ErrNotExist
 	}
-	return path.Join(s.config().Data, "users", sess.PAMUser), nil
+	if sess.PAMUser != "" {
+		if !pamauth.ValidUsername(sess.PAMUser) || !filepath.IsLocal(sess.PAMUser) {
+			return "", os.ErrNotExist
+		}
+		return path.Join(s.config().Data, "users", sess.PAMUser), nil
+	}
+	id, ok := s.emailHomeID(sess)
+	if !ok || !s.emailCubbyOK(id) {
+		return "", os.ErrNotExist
+	}
+	return path.Join(s.config().Data, "home", id), nil
 }
 
 func (s *Server) serveGet(w http.ResponseWriter, r *http.Request, root *jail.Root, prefix, rel string) {
@@ -437,12 +460,12 @@ const ovpnImportPage = `<!DOCTYPE html>
 
 func (s *Server) serveOpenVPNProfile(w http.ResponseWriter, r *http.Request) {
 	sess := s.session(r)
-	if sess == nil || sess.PAMUser == "" {
+	if sess == nil || !s.sessionHasCubby(sess) {
 		log.Printf("openvpn GET %s from %s: session lost -> /login", r.URL.RequestURI(), r.RemoteAddr)
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
-	s.prepareCubbyRead(sess.PAMUser, "")
+	s.prepareSessionCubby(sess, "")
 	rootPath, err := s.jailPath(sess)
 	if err != nil {
 		log.Printf("openvpn GET %s pam=%s from %s: jail path: %v", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, err)
@@ -499,7 +522,8 @@ func (s *Server) serveOpenVPNProfile(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/home/", http.StatusFound)
 		return
 	}
-	if err := s.writeOvpnAttachment(w, r, sess.PAMUser, rel); err != nil {
+	homeID, _ := s.emailHomeID(sess)
+	if err := s.writeOvpnAttachment(w, r, sess.PAMUser, homeID, rel); err != nil {
 		log.Printf("openvpn GET %s pam=%s from %s: serve %s: %v -> /home/", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, rel, err)
 		http.Redirect(w, r, "/home/", http.StatusFound)
 		return
@@ -507,10 +531,21 @@ func (s *Server) serveOpenVPNProfile(w http.ResponseWriter, r *http.Request) {
 	log.Printf("openvpn GET %s pam=%s from %s ua=%q accept=%q: attachment %s type=%s found=%q", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, r.UserAgent(), r.Header.Get("Accept"), rel, ovpnProfileType, found)
 }
 
-func (s *Server) tryOvpnImport(r *http.Request, pam, rel, sid string) template.URL {
-	id, err := s.putOvpnTicket(pam, rel, sid)
+func (s *Server) tryOvpnImport(r *http.Request, sess *store.Session, rel string) template.URL {
+	if sess == nil {
+		return ""
+	}
+	t := ovpnTicket{pam: sess.PAMUser, iss: sess.Iss, sub: sess.Sub, rel: rel, sid: sess.ID}
+	if sess.PAMUser == "" {
+		id, ok := s.emailHomeID(sess)
+		if !ok {
+			return ""
+		}
+		t.homeID = id
+	}
+	id, err := s.mintOvpnTicket(t)
 	if err != nil {
-		log.Printf("openvpn GET %s pam=%s from %s: ticket %s: %v", r.URL.RequestURI(), pam, r.RemoteAddr, rel, err)
+		log.Printf("openvpn GET %s pam=%s from %s: ticket %s: %v", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, rel, err)
 		return ""
 	}
 	return template.URL("openvpn://import-profile/" + s.config().PublicURL + "/openvpn-api/profile?token=" + id)
@@ -518,14 +553,15 @@ func (s *Server) tryOvpnImport(r *http.Request, pam, rel, sid string) template.U
 
 func (s *Server) renderOvpnHandoff(w http.ResponseWriter, r *http.Request, sess *store.Session, found []string, rel string) {
 	data := sessionPage(sess, pageData{Title: "OpenVPN"})
-	tokens := !s.ovpnTokensOff(sess.PAMUser)
+	homeID, _ := s.emailHomeID(sess)
+	tokens := !s.ovpnTokensOff(sess.PAMUser, homeID)
 	data.OvpnToken = tokens
 	switch {
 	case rel != "":
 		data.File = path.Base(rel)
 		data.Download = ovpnProfileDownloadURI(r, rel)
 		if tokens {
-			data.Import = s.tryOvpnImport(r, sess.PAMUser, rel, sess.ID)
+			data.Import = s.tryOvpnImport(r, sess, rel)
 		}
 		log.Printf("openvpn GET %s pam=%s from %s ua=%q: html handoff %s import=%v found=%q", r.URL.RequestURI(), sess.PAMUser, r.RemoteAddr, r.UserAgent(), rel, data.Import != "", found)
 	case len(found) > 0:
@@ -534,7 +570,7 @@ func (s *Server) renderOvpnHandoff(w http.ResponseWriter, r *http.Request, sess 
 		for _, p := range sorted {
 			ch := ovpnChoice{Name: p, Download: ovpnProfileDownloadURI(r, p)}
 			if tokens {
-				imp := s.tryOvpnImport(r, sess.PAMUser, p, sess.ID)
+				imp := s.tryOvpnImport(r, sess, p)
 				if imp == "" {
 					continue
 				}
@@ -565,12 +601,12 @@ func (s *Server) serveOpenVPNTicket(w http.ResponseWriter, r *http.Request, id s
 		http.NotFound(w, r)
 		return
 	}
-	if s.ovpnTokensOff(t.pam) {
+	if s.ovpnTokensOff(t.pam, t.homeID) {
 		log.Printf("openvpn token %s pam=%s from %s ua=%q: disabled %s", r.Method, t.pam, r.RemoteAddr, r.UserAgent(), t.rel)
 		http.NotFound(w, r)
 		return
 	}
-	if err := s.writeOvpnAttachment(w, r, t.pam, t.rel); err != nil {
+	if err := s.writeOvpnAttachment(w, r, t.pam, t.homeID, t.rel); err != nil {
 		log.Printf("openvpn token %s pam=%s from %s ua=%q: %s: %v", r.Method, t.pam, r.RemoteAddr, r.UserAgent(), t.rel, err)
 		http.NotFound(w, r)
 		return
@@ -578,12 +614,25 @@ func (s *Server) serveOpenVPNTicket(w http.ResponseWriter, r *http.Request, id s
 	log.Printf("openvpn token %s pam=%s from %s ua=%q: %s", r.Method, t.pam, r.RemoteAddr, r.UserAgent(), t.rel)
 }
 
-func (s *Server) writeOvpnAttachment(w http.ResponseWriter, r *http.Request, pam, rel string) error {
-	if !pamauth.ValidUsername(pam) || rel == "" || !filepath.IsLocal(rel) {
+func (s *Server) writeOvpnAttachment(w http.ResponseWriter, r *http.Request, pam, homeID, rel string) error {
+	if rel == "" || !filepath.IsLocal(rel) {
 		return os.ErrNotExist
 	}
-	s.prepareCubbyRead(pam, rel)
-	rootPath, err := s.jailPath(&store.Session{PAMUser: pam})
+	var rootPath string
+	var err error
+	switch {
+	case pam != "":
+		if !pamauth.ValidUsername(pam) {
+			return os.ErrNotExist
+		}
+		s.prepareCubbyRead(pam, rel)
+		rootPath, err = s.jailPath(&store.Session{PAMUser: pam})
+	case s.emailCubbyOK(homeID):
+		s.prepareEmailCubby(homeID, rel)
+		rootPath = path.Join(s.config().Data, "home", homeID)
+	default:
+		return os.ErrNotExist
+	}
 	if err != nil {
 		return err
 	}
@@ -714,14 +763,20 @@ func ovpnProfileDownloadURI(r *http.Request, rel string) string {
 // for that PAM user. Presence of a regular file; content is ignored.
 const ovpnTokenSentinel = ".bootstash-no-ovpn-token"
 
-func (s *Server) ovpnTokensOff(pam string) bool {
+func (s *Server) ovpnTokensOff(pam, homeID string) bool {
 	if s.config().DisableOvpnToken {
 		return true
 	}
-	if pam == "" || !pamauth.ValidUsername(pam) {
+	var rootPath string
+	var err error
+	switch {
+	case pam != "" && pamauth.ValidUsername(pam):
+		rootPath, err = s.jailPath(&store.Session{PAMUser: pam})
+	case s.emailCubbyOK(homeID):
+		rootPath = path.Join(s.config().Data, "home", homeID)
+	default:
 		return false
 	}
-	rootPath, err := s.jailPath(&store.Session{PAMUser: pam})
 	if err != nil {
 		return true
 	}

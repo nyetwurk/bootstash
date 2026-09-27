@@ -66,6 +66,7 @@ func putWith(u putUser, w io.Writer, args []string) int {
 	defaults := flags.String("defaults", config.DefaultDistPath, "dist defaults (read DATA)")
 	cfgFile := flags.String("config", config.DefaultConfigPath, "operator config (read DATA)")
 	destFlag := flags.String("t", "", "destination directory in the cubby")
+	emailFlag := flags.String("email", "", "verified address cubby (REQUIRE_PAM_LINK=0)")
 	flags.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: bootstash put [options] [-t DIR] SRC [SRC...]")
 	}
@@ -83,7 +84,7 @@ func putWith(u putUser, w io.Writer, args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	cubby, err := cubbyDir(cfg.Data, u)
+	cubby, err := cubbyDir(cfg, u, *emailFlag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "bootstash put: %v\n", err)
 		return 1
@@ -143,7 +144,104 @@ func splitPutArgs(args []string, destFlag string) (sources []string, dest string
 
 var errPutUsage = errors.New("usage")
 
-func cubbyDir(data string, u putUser) (string, error) {
+func cubbyDir(cfg *config.Config, u putUser, emailFlag string) (string, error) {
+	if cfg == nil {
+		return "", errors.New("no config")
+	}
+	if cfg.RequirePAMLink {
+		if emailFlag != "" {
+			return "", errors.New("-email requires REQUIRE_PAM_LINK=0")
+		}
+		return pamCubby(cfg.Data, u)
+	}
+	email, err := pickPutEmail(cfg, emailFlag)
+	if err != nil {
+		return "", err
+	}
+	id, err := config.EmailCubbyID(email)
+	if err != nil {
+		return "", err
+	}
+	return emailCubby(cfg.Data, u, id)
+}
+
+func pickPutEmail(cfg *config.Config, emailFlag string) (string, error) {
+	if emailFlag != "" {
+		n, err := config.NormalizeEmail(emailFlag)
+		if err != nil {
+			return "", fmt.Errorf("email: %w", err)
+		}
+		if len(cfg.AllowedEmails) == 0 || !cfg.AllowsEmail(n) {
+			return "", fmt.Errorf("email %s is not in ALLOWED_EMAILS", n)
+		}
+		return n, nil
+	}
+	switch len(cfg.AllowedEmails) {
+	case 1:
+		return cfg.AllowedEmails[0], nil
+	case 0:
+		return "", errors.New("set ALLOWED_EMAILS or pass -email")
+	default:
+		return "", fmt.Errorf("pass -email (ALLOWED_EMAILS has %d addresses)", len(cfg.AllowedEmails))
+	}
+}
+
+func emailCubby(data string, u putUser, id string) (string, error) {
+	home := filepath.Join(data, "home")
+	st, err := os.Lstat(home)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("no %s (start bootstash once so it can create home/)", home)
+		}
+		if os.IsPermission(err) {
+			return "", cannotCreateCubby(home)
+		}
+		return "", err
+	}
+	if st.Mode()&os.ModeSymlink != 0 || !st.IsDir() {
+		return "", fmt.Errorf("%s: not a directory", home)
+	}
+	cubby := filepath.Join(home, id)
+	cst, err := os.Lstat(cubby)
+	if err != nil {
+		if os.IsPermission(err) {
+			return "", cannotCreateCubby(home)
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		// umask 0 so the directory is 0770. The setgid parent supplies
+		// group and S_ISGID. Do not chmod: chmod(2) clears S_ISGID
+		// when the caller is not in that group.
+		old := syscall.Umask(0)
+		mkErr := os.Mkdir(cubby, 0770)
+		syscall.Umask(old)
+		if mkErr != nil {
+			if os.IsPermission(mkErr) {
+				return "", cannotCreateCubby(home)
+			}
+			return "", mkErr
+		}
+		cst, err = os.Lstat(cubby)
+		if err != nil {
+			return "", err
+		}
+		if cst.Mode()&os.ModeSetgid == 0 || cst.Mode().Perm()&0o070 != 0o070 {
+			return "", fmt.Errorf("%s: cubby is missing setgid or group access (%s must be mode 03773)", cubby, home)
+		}
+		return cubby, nil
+	}
+	if _, err := ownedCubby(cubby, cst, u); err != nil {
+		return "", err
+	}
+	return cubby, nil
+}
+
+func cannotCreateCubby(home string) error {
+	return fmt.Errorf("cannot create a directory in %s (want mode 03773)", home)
+}
+
+func pamCubby(data string, u putUser) (string, error) {
 	if !pamauth.ValidUsername(u.Name) || !filepath.IsLocal(u.Name) {
 		return "", fmt.Errorf("invalid user %q", u.Name)
 	}
@@ -155,6 +253,10 @@ func cubbyDir(data string, u putUser) (string, error) {
 		}
 		return "", err
 	}
+	return ownedCubby(cubby, st, u)
+}
+
+func ownedCubby(cubby string, st os.FileInfo, u putUser) (string, error) {
 	if st.Mode()&os.ModeSymlink != 0 {
 		return "", fmt.Errorf("%s: cubby must be a directory, not a symlink", cubby)
 	}

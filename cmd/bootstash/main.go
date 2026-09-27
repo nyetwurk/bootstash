@@ -86,6 +86,9 @@ func runCheck(args []string) int {
 		return 1
 	}
 	fmt.Fprintf(os.Stderr, "configuration ok %s\n", configcheck.Summary(cfg))
+	if n := configcheck.Notice(cfg); n != "" {
+		fmt.Fprintln(os.Stderr, "bootstash:", n)
+	}
 	return 0
 }
 
@@ -97,6 +100,6 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "  provision-google   print Google OIDC recipe and install the downloaded client JSON\n")
 	fmt.Fprintf(os.Stderr, "  links              list OIDC→PAM maps (needs read of $DATA/state)\n")
 	fmt.Fprintf(os.Stderr, "  unlink             drop OIDC→PAM links for a Unix user (needs write to $DATA/state)\n")
-	fmt.Fprintf(os.Stderr, "  put                copy files or directories into your cubby (not root)\n")
+	fmt.Fprintf(os.Stderr, "  put                copy files into your cubby, or an allowlisted address cubby (not root)\n")
 	fmt.Fprintf(os.Stderr, "  version            print git describe version\n")
 }

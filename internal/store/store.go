@@ -41,6 +41,21 @@ type Link struct {
 	PAMUser string `json:"pam_user"`
 }
 
+// Subject pins one verified address to an OIDC (issuer, sub).
+type Subject struct {
+	Email   string `json:"email"`
+	Issuer  string `json:"issuer"`
+	Subject string `json:"sub"`
+}
+
+type subjectFile struct {
+	Subjects []Subject `json:"subjects"`
+}
+
+// ErrSubjectMismatch means this address is already pinned to a
+// different (issuer, sub). The row is left unchanged.
+var ErrSubjectMismatch = errors.New("oidc subject does not match the address")
+
 // Store is a directory-backed session and link table.
 type Store struct {
 	dir string
@@ -504,6 +519,60 @@ func (s *Store) chownToState(path string) error {
 
 func (s *Store) linksPath() string {
 	return filepath.Join(s.dir, "links.json")
+}
+
+func (s *Store) subjectsPath() string {
+	return filepath.Join(s.dir, "subjects.json")
+}
+
+// BindSubject inserts (email → issuer, sub) on first use. A later
+// call for the same email must present that subject. A different
+// subject returns ErrSubjectMismatch and does not overwrite the row.
+// Other addresses are left alone.
+func (s *Store) BindSubject(email, iss, sub string) error {
+	if email == "" || iss == "" || sub == "" {
+		return os.ErrInvalid
+	}
+	return s.withLock(func() error {
+		sf, err := s.readSubjects()
+		if err != nil {
+			return err
+		}
+		for _, row := range sf.Subjects {
+			if row.Email != email {
+				continue
+			}
+			if row.Issuer == iss && row.Subject == sub {
+				return nil
+			}
+			return ErrSubjectMismatch
+		}
+		sf.Subjects = append(sf.Subjects, Subject{Email: email, Issuer: iss, Subject: sub})
+		return s.writeSubjects(sf)
+	})
+}
+
+func (s *Store) readSubjects() (*subjectFile, error) {
+	b, err := os.ReadFile(s.subjectsPath())
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return &subjectFile{}, nil
+		}
+		return nil, err
+	}
+	var sf subjectFile
+	if err := json.Unmarshal(b, &sf); err != nil {
+		return nil, err
+	}
+	return &sf, nil
+}
+
+func (s *Store) writeSubjects(sf *subjectFile) error {
+	b, err := json.MarshalIndent(sf, "", "  ")
+	if err != nil {
+		return err
+	}
+	return s.writeStateFile(s.subjectsPath(), b)
 }
 
 func randomID() (string, error) {

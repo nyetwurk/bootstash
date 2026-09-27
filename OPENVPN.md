@@ -15,7 +15,8 @@ the same.
 ## Import
 
 Connect probes `HEAD` / `GET /openvpn-api/profile` on the origin you
-paste. After Google and the one-time Linux link:
+paste. After Google and, unless `REQUIRE_PAM_LINK=0`, the one-time
+Linux link:
 
 - One `.ovpn` (any name), or several with a unique `client.ovpn`:
   the page opens Connect (`openvpn://import-profile/…`)

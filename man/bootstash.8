@@ -33,6 +33,7 @@ bootstash \- CLI for bootstashd
 \fBput\fR
 [\fB\-defaults\fR \fIpath\fR]
 [\fB\-config\fR \fIpath\fR]
+[\fB\-email\fR \fIaddr\fR]
 [\fB\-t\fR \fIdir\fR]
 \fIsource\fR...
 .PP
@@ -173,16 +174,46 @@ State files stay owned as
 (not root) so the daemon can still read them.
 .TP
 .B put
-Copy files or directories into the caller’s cubby
-.RI ( $DATA/users/<unix-name>/ ).
-Run as that Unix user, not
+Copy files or directories into a cubby.
+Run as the Unix user who should own the files, not
 .B root
 (not
 .BR sudo ).
 UID 0 is refused.
-The cubby must already exist (sign in and
+With
+.B REQUIRE_PAM_LINK=1
+(the default) the cubby is
+.RI $DATA/users/<unix-name>/
+and must already exist (sign in and
 .B POST /link
-first); this command does not create it.
+first).
+With
+.B REQUIRE_PAM_LINK=0
+.B \-email
+.I addr
+selects one
+.B ALLOWED_EMAILS
+address and this command creates
+.RI $DATA/home/<id>/
+if it is missing
+.RB ( 2770 ,
+owned by the caller).
+Omit
+.B \-email
+only when that list has a single address.
+Several addresses without
+.B \-email
+is an error. One file is not copied into every cubby.
+.I home/
+must already exist
+.RB ( 03773
+.BR bootstash:bootstash ).
+The caller is not added to group
+.BR bootstash .
+Does not
+.B chown
+the new cubby to
+.BR bootstash .
 Does not read OIDC secrets.
 Every
 .I source
@@ -268,6 +299,16 @@ Downloaded Web application client JSON for
 Use
 .B \-
 to read stdin.
+.TP
+.BI \-email " addr"
+Verified address for
+.B put
+when
+.B REQUIRE_PAM_LINK=0 .
+Required when
+.B ALLOWED_EMAILS
+has more than one address.
+Omit it when that list has a single address.
 .TP
 .BI \-t " dir"
 The only destination for

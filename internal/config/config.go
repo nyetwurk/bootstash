@@ -44,9 +44,16 @@ type Config struct {
 	MaxUpload          int64
 	UnixGroup          string
 	AdminUsers         []string
-	DefaultsPath       string
-	ConfigPath         string
-	SecretsPath        string
+	// AllowedEmails is the verified-address allowlist. Empty: whoever
+	// the OIDC client admits. Each address is one cubby.
+	AllowedEmails []string
+	// RequirePAMLink is REQUIRE_PAM_LINK. True (packaged default):
+	// /home needs a PAM link. False: an unlinked session uses the
+	// email cubby.
+	RequirePAMLink bool
+	DefaultsPath   string
+	ConfigPath     string
+	SecretsPath    string
 }
 
 var builtin = mustParseBuiltin()
@@ -201,6 +208,19 @@ func (c *Config) apply(m map[string][]string) error {
 		}
 		c.AdminUsers = users
 	}
+	emails, err := parseAllowedEmails(m["ALLOWED_EMAILS"])
+	if err != nil {
+		return err
+	}
+	c.AllowedEmails = emails
+	c.RequirePAMLink = true
+	if s := first(m, "REQUIRE_PAM_LINK"); s != "" {
+		on, err := parseBool(s)
+		if err != nil {
+			return fmt.Errorf("REQUIRE_PAM_LINK: %w", err)
+		}
+		c.RequirePAMLink = on
+	}
 	for _, p := range []struct {
 		ok   bool
 		name string
@@ -252,12 +272,17 @@ func mergeInto(dst, src map[string][]string) {
 	if vals, ok := src["LISTEN"]; ok {
 		dst["LISTEN"] = append([]string(nil), vals...)
 	}
+	// Every ALLOWED_EMAILS line counts. Mentioning the key replaces
+	// the packaged list, the same way LISTEN does.
+	if vals, ok := src["ALLOWED_EMAILS"]; ok {
+		dst["ALLOWED_EMAILS"] = append([]string(nil), vals...)
+	}
 	mergeScalars(dst, src)
 }
 
 func mergeScalars(dst, src map[string][]string) {
 	for k, vals := range src {
-		if k == "LISTEN" || len(vals) == 0 {
+		if k == "LISTEN" || k == "ALLOWED_EMAILS" || len(vals) == 0 {
 			continue
 		}
 		dst[k] = []string{vals[len(vals)-1]}

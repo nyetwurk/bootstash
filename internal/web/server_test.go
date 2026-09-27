@@ -61,6 +61,7 @@ func testConfig(dir string) *config.Config {
 		PAMService:         "bootstashd",
 		MaxUpload:          64,
 		UnixGroup:          "bootstash",
+		RequirePAMLink:     true,
 	}
 }
 
@@ -1654,7 +1655,7 @@ func TestOpenVPNProfileImport(t *testing.T) {
 	req.AddCookie(c)
 	rr = do(s, req)
 	page = rr.Body.String()
-	if rr.Code != http.StatusOK || !strings.Contains(page, "work.ovpn") || !strings.Contains(page, "home.ovpn") {
+	if rr.Code != http.StatusOK || !strings.Contains(page, "Choose a profile to import.") || !strings.Contains(page, "work.ovpn") || !strings.Contains(page, "home.ovpn") {
 		t.Fatalf("picker: %d %s", rr.Code, page)
 	}
 	if strings.Contains(page, "location.replace") || strings.Contains(page, `id="ovpn-open"`) {

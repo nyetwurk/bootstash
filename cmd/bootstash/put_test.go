@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/nyet/bootstash/internal/config"
 	"github.com/nyet/bootstash/internal/osutil"
 	"github.com/nyet/bootstash/internal/pamauth"
 )
@@ -296,4 +297,118 @@ func setupPutTest(t *testing.T) (putUser, string, []string) {
 	}
 	args := []string{"-defaults", filepath.Join(dir, "missing-dist"), "-config", op}
 	return u, data, args
+}
+
+func TestPutEmailCubby(t *testing.T) {
+	u, data, cfgArgs := setupPutTest(t)
+	home := filepath.Join(data, "home")
+	if err := os.MkdirAll(home, 0770); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(home, os.ModeSetgid|os.ModeSticky|0773); err != nil {
+		t.Fatal(err)
+	}
+	op := cfgArgs[3]
+	body := "DATA=" + data + "\nREQUIRE_PAM_LINK=0\nALLOWED_EMAILS=Alice@Gmail.com\nALLOWED_EMAILS=bob@gmail.com\n"
+	if err := os.WriteFile(op, []byte(body), 0644); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(t.TempDir(), "client.ovpn")
+	if err := os.WriteFile(src, []byte("client\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if code := putWith(u, ioDiscard(), append(cfgArgs, src)); code == 0 {
+		t.Fatal("two addresses without -email should fail")
+	}
+	if code := putWith(u, ioDiscard(), append(cfgArgs, "-email", "carol@gmail.com", src)); code == 0 {
+		t.Fatal("unlisted email should fail")
+	}
+	if code := putWith(u, ioDiscard(), append(cfgArgs, "-email", "alice@gmail.com", src)); code != 0 {
+		t.Fatal("put -email")
+	}
+	id, err := config.EmailCubbyID("alice@gmail.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cubby := filepath.Join(home, id)
+	got, err := os.ReadFile(filepath.Join(cubby, "client.ovpn"))
+	if err != nil || string(got) != "client\n" {
+		t.Fatalf("file %q %v", got, err)
+	}
+	st, err := os.Lstat(cubby)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uid, _, ok := osutil.FileIDs(st)
+	if !ok || uid != u.UID {
+		t.Fatalf("cubby uid %d want %d", uid, u.UID)
+	}
+	if osutil.UnixBits(st.Mode())&0o2770 != 0o2770 {
+		t.Fatalf("cubby mode %04o", osutil.UnixBits(st.Mode()))
+	}
+	fst, err := os.Lstat(filepath.Join(cubby, "client.ovpn"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fuid, _, ok := osutil.FileIDs(fst)
+	if !ok || fuid != u.UID {
+		t.Fatalf("file uid %d want %d", fuid, u.UID)
+	}
+	bob, err := config.EmailCubbyID("bob@gmail.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(home, bob)); !os.IsNotExist(err) {
+		t.Fatal("put created the other cubby")
+	}
+}
+
+func TestPutEmailCubbySoleAddress(t *testing.T) {
+	u, data, cfgArgs := setupPutTest(t)
+	home := filepath.Join(data, "home")
+	if err := os.MkdirAll(home, 0770); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(home, os.ModeSetgid|os.ModeSticky|0773); err != nil {
+		t.Fatal(err)
+	}
+	op := cfgArgs[3]
+	if err := os.WriteFile(op, []byte("DATA="+data+"\nREQUIRE_PAM_LINK=0\nALLOWED_EMAILS=only@gmail.com\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(t.TempDir(), "a.txt")
+	if err := os.WriteFile(src, []byte("a"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if code := putWith(u, ioDiscard(), append(cfgArgs, src)); code != 0 {
+		t.Fatal("sole address")
+	}
+	id, err := config.EmailCubbyID("only@gmail.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.ReadFile(filepath.Join(home, id, "a.txt")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPutEmailCubbyNeedsHome(t *testing.T) {
+	u, data, cfgArgs := setupPutTest(t)
+	op := cfgArgs[3]
+	if err := os.WriteFile(op, []byte("DATA="+data+"\nREQUIRE_PAM_LINK=0\nALLOWED_EMAILS=only@gmail.com\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(t.TempDir(), "a.txt")
+	if err := os.WriteFile(src, []byte("a"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if code := putWith(u, ioDiscard(), append(cfgArgs, src)); code == 0 {
+		t.Fatal("missing home/")
+	}
+	if err := os.MkdirAll(filepath.Join(data, "home"), 0555); err != nil {
+		t.Fatal(err)
+	}
+	if code := putWith(u, ioDiscard(), append(cfgArgs, src)); code == 0 {
+		t.Fatal("home not writable")
+	}
 }

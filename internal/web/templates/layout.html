@@ -13,7 +13,7 @@
 <header class="top">
 <a class="brand" href="/">bootstash</a>
 <div class="who">
-<p>{{if .OIDCUser}}{{.OIDCUser}} · {{end}}{{if .PAMUser}}{{.PAMUser}}{{else}}Not linked yet{{end}}</p>
+<p>{{if .OIDCUser}}{{.OIDCUser}}{{end}}{{if .PAMUser}}{{if .OIDCUser}} · {{end}}{{.PAMUser}}{{else if .NeedLink}}{{if .OIDCUser}} · {{end}}Not linked yet{{end}}</p>
 <form method="post" action="/logout"><button type="submit">Sign out</button></form>
 </div>
 </header>
