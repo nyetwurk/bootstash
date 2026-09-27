@@ -263,6 +263,8 @@ Changing or disabling the Unix account does not drop the map.
 Not an `ADMIN_USERS` HTTP power.
 
 `bootstash put` copies files or directories into the caller’s cubby.
+Every positional argument is a source. `-t DIR` is the only
+directory inside that cubby.
 Not sudo. UID 0 is refused. Does not create the cubby. Does not read
 OIDC secrets. Files `0660` (HTTP upload), dirs `2770` (cubby).
 

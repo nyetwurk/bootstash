@@ -69,7 +69,7 @@ Connect: [`OPENVPN.md`](OPENVPN.md).
 - Copy a file’s link from the listing (clipboard icon next to the
   name)
 - Upload into **your** folder
-- From a host login: `bootstash put` files into **your** folder (not sudo)
+- From a host login: `bootstash put` copies every file into **your** folder (`-t` for a directory inside it; not sudo)
 - Delete files (and empty folders) in **your** folder
 - Sign out (this browser session; the Linux link stays)
 
@@ -93,8 +93,9 @@ One data volume (you choose the path): `users/<linux-username>/` for
 that PAM user. The daemon runs as one service account so it can read
 those trees. HTTP refuses paths outside your folder.
 
-From a login, `bootstash put` (not sudo) or ordinary `cp` copies into
-your cubby. Modes and what not to `chown`:
+From a login, `bootstash put` (not sudo) copies every source into
+your cubby. `-t` is the only directory inside it. Ordinary `cp`
+also works. Modes and what not to `chown`:
 [`QUICKSTART.md`](QUICKSTART.md) (Users and files).
 
 ## What this is not

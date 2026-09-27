@@ -35,7 +35,6 @@ bootstash \- CLI for bootstashd
 [\fB\-config\fR \fIpath\fR]
 [\fB\-t\fR \fIdir\fR]
 \fIsource\fR...
-[\fIdest\fR]
 .PP
 .B bootstash
 [\fB\-\-version\fR]
@@ -185,17 +184,17 @@ The cubby must already exist (sign in and
 .B POST /link
 first); this command does not create it.
 Does not read OIDC secrets.
-Destination is relative to the cubby, or an absolute path under it.
-One
+Every
 .I source
-copies to the cubby root keeping the basename.
-Several arguments: last is
-.I dest
-(like
-.BR cp ).
+is copied into the cubby root, keeping its basename.
 .B \-t
 .I dir
-puts every source into that cubby directory (created if missing).
+is the only destination: every source is copied into that directory
+inside the cubby (created if missing).
+.I dir
+is relative to the cubby, or an absolute path under it.
+A path outside the cubby is refused.
+No positional argument is a destination.
 Directories are copied recursively.
 Regular files become
 .B 0660
@@ -271,8 +270,10 @@ Use
 to read stdin.
 .TP
 .BI \-t " dir"
-Destination directory in the cubby for
-.BR put .
+The only destination for
+.BR put :
+a directory inside the cubby.
+Every other argument is a source.
 Created if missing.
 .SH SEE ALSO
 .BR bootstashd (8),

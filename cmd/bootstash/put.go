@@ -67,13 +67,12 @@ func putWith(u putUser, w io.Writer, args []string) int {
 	cfgFile := flags.String("config", config.DefaultConfigPath, "operator config (read DATA)")
 	destFlag := flags.String("t", "", "destination directory in the cubby")
 	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: bootstash put [options] SRC [SRC...] [DEST]")
-		fmt.Fprintln(os.Stderr, "       bootstash put [options] -t DEST SRC [SRC...]")
+		fmt.Fprintln(os.Stderr, "usage: bootstash put [options] [-t DIR] SRC [SRC...]")
 	}
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
-	sources, dest, destDir, err := splitPutArgs(flags.Args(), *destFlag)
+	sources, dest, err := splitPutArgs(flags.Args(), *destFlag)
 	if err != nil {
 		flags.Usage()
 		return 2
@@ -107,12 +106,7 @@ func putWith(u putUser, w io.Writer, args []string) int {
 	oldMask := syscall.Umask(0)
 	defer syscall.Umask(oldMask)
 
-	if !destDir {
-		if st, err := root.Stat(destRel); err == nil && st.IsDir() {
-			destDir = true
-		}
-	}
-	if destDir && destRel != "" {
+	if destRel != "" {
 		if err := mkdirAll(root, destRel); err != nil {
 			fmt.Fprintf(os.Stderr, "bootstash put: %v\n", err)
 			return 1
@@ -120,7 +114,7 @@ func putWith(u putUser, w io.Writer, args []string) int {
 	}
 
 	for _, src := range sources {
-		target, err := putTarget(src, destRel, destDir)
+		target, err := putTarget(src, destRel)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "bootstash put: %v\n", err)
 			return 1
@@ -137,24 +131,14 @@ func putWith(u putUser, w io.Writer, args []string) int {
 	return 0
 }
 
-func splitPutArgs(args []string, destFlag string) (sources []string, dest string, destDir bool, err error) {
-	if destFlag != "" {
-		if len(args) < 1 {
-			return nil, "", false, errPutUsage
-		}
-		return args, destFlag, true, nil
+// splitPutArgs treats every positional as a source. destFlag is the
+// only destination, a directory inside the cubby (-t). Empty means
+// the cubby root.
+func splitPutArgs(args []string, destFlag string) (sources []string, dest string, err error) {
+	if len(args) < 1 {
+		return nil, "", errPutUsage
 	}
-	switch len(args) {
-	case 0:
-		return nil, "", false, errPutUsage
-	case 1:
-		return args, "", true, nil
-	default:
-		dest = args[len(args)-1]
-		sources = args[:len(args)-1]
-		destDir = len(sources) > 1 || strings.HasSuffix(dest, "/") || dest == "." || dest == "/"
-		return sources, dest, destDir, nil
-	}
+	return args, destFlag, nil
 }
 
 var errPutUsage = errors.New("usage")
@@ -214,16 +198,10 @@ func cubbyRel(cubby, dest string) (string, error) {
 	return rel, nil
 }
 
-func putTarget(src, destRel string, destDir bool) (string, error) {
+func putTarget(src, destRel string) (string, error) {
 	base := filepath.Base(strings.TrimRight(src, string(filepath.Separator)))
 	if base == "" || base == "." || base == string(filepath.Separator) {
 		return "", fmt.Errorf("%s: invalid source name", src)
-	}
-	if !destDir {
-		if destRel == "" {
-			return base, nil
-		}
-		return destRel, nil
 	}
 	if destRel == "" {
 		return base, nil

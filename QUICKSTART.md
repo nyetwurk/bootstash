@@ -163,11 +163,13 @@ To drop a user's Google->Linux map (they must link again; the cubby
 stays): `sudo bootstash unlink alice`. Changing or disabling the Unix
 account does not drop the map.
 
-After link, that Unix user can put files into the cubby (not root):
+After link, that Unix user can put files into the cubby (not root).
+Every name on the command is a source. `-t` is the only directory
+inside the cubby.
 
 ```bash
 bootstash put ./id_ed25519
-bootstash put ./kit/ keys/
+bootstash put -t keys ./kit/
 ```
 
 Or ordinary `cp` into `/var/lib/bootstash/users/<name>/`. Keep

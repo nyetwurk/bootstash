@@ -39,7 +39,7 @@ func TestPutCopiesFileAndDir(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	args := append(cfgArgs, "-t", ".", file, kit)
+	args := append(cfgArgs, file, kit)
 	if code := putWith(u, &out, args); code != 0 {
 		t.Fatalf("put: %d", code)
 	}
@@ -75,7 +75,7 @@ func TestPutCopiesFileAndDir(t *testing.T) {
 	}
 }
 
-func TestPutRenameAndDashT(t *testing.T) {
+func TestPutSourcesAndDashT(t *testing.T) {
 	u, env, cfgArgs := setupPutTest(t)
 	srcDir := t.TempDir()
 	a := filepath.Join(srcDir, "a.txt")
@@ -87,13 +87,17 @@ func TestPutRenameAndDashT(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if code := putWith(u, ioDiscard(), append(cfgArgs, a, "renamed.txt")); code != 0 {
-		t.Fatalf("rename: %d", code)
+	if code := putWith(u, ioDiscard(), append(cfgArgs, a, b)); code != 0 {
+		t.Fatalf("sources: %d", code)
 	}
 	cubby := filepath.Join(env, "users", u.Name)
-	got, err := os.ReadFile(filepath.Join(cubby, "renamed.txt"))
+	got, err := os.ReadFile(filepath.Join(cubby, "a.txt"))
 	if err != nil || string(got) != "A" {
-		t.Fatalf("renamed %q %v", got, err)
+		t.Fatalf("a.txt %q %v", got, err)
+	}
+	got, err = os.ReadFile(filepath.Join(cubby, "b.txt"))
+	if err != nil || string(got) != "B" {
+		t.Fatalf("b.txt %q %v", got, err)
 	}
 
 	if code := putWith(u, ioDiscard(), append(cfgArgs, "-t", "keys/", b)); code != 0 {
@@ -112,11 +116,11 @@ func TestPutAbsoluteDestUnderCubby(t *testing.T) {
 		t.Fatal(err)
 	}
 	cubby := filepath.Join(env, "users", u.Name)
-	dest := filepath.Join(cubby, "inside.txt")
-	if code := putWith(u, ioDiscard(), append(cfgArgs, src, dest)); code != 0 {
-		t.Fatalf("abs dest: %d", code)
+	dest := filepath.Join(cubby, "inside")
+	if code := putWith(u, ioDiscard(), append(cfgArgs, "-t", dest, src)); code != 0 {
+		t.Fatalf("abs -t: %d", code)
 	}
-	got, err := os.ReadFile(dest)
+	got, err := os.ReadFile(filepath.Join(dest, "n"))
 	if err != nil || string(got) != "x" {
 		t.Fatalf("inside %q %v", got, err)
 	}
@@ -129,7 +133,7 @@ func TestPutRefusesEscapeAndSymlink(t *testing.T) {
 	if err := os.WriteFile(file, []byte("ok"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if code := putWith(u, ioDiscard(), append(cfgArgs, file, "../outside")); code != 1 {
+	if code := putWith(u, ioDiscard(), append(cfgArgs, "-t", "../outside", file)); code != 1 {
 		t.Fatalf("escape dest: %d", code)
 	}
 	outside := filepath.Join(env, "outside")
@@ -186,7 +190,7 @@ func TestPutRefusesSelfCopy(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cubby, "x"), []byte("x"), 0660); err != nil {
 		t.Fatal(err)
 	}
-	if code := putWith(u, ioDiscard(), append(cfgArgs, cubby, "nested")); code != 1 {
+	if code := putWith(u, ioDiscard(), append(cfgArgs, cubby)); code != 1 {
 		t.Fatalf("self copy: %d", code)
 	}
 }
