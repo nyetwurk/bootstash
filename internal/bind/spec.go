@@ -330,7 +330,7 @@ func Listen(t Target, unixGroup string) (net.Listener, error) {
 					return
 				}
 				if t.Device != "" {
-					if err := unix.SetsockoptString(int(fd), unix.SOL_SOCKET, unix.SO_BINDTODEVICE, t.Device); err != nil {
+					if err := bindToDevice(int(fd), t.Device); err != nil {
 						sockErr = err
 					}
 				}

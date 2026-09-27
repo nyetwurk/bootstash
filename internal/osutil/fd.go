@@ -15,7 +15,8 @@ func Fchmod(fd int, path string, mode os.FileMode) error {
 	if err := unix.Fstat(fd, &st); err != nil {
 		return err
 	}
-	from := st.Mode & 0o7777
+	// Stat_t.Mode is uint32 on Linux and uint16 on Darwin.
+	from := uint32(st.Mode) & 0o7777
 	to := UnixBits(mode)
 	if from == to {
 		return nil
