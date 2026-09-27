@@ -30,6 +30,12 @@ bootstash \- CLI for bootstashd
 .I user
 .PP
 .B bootstash
+\fBmkdir\fR
+[\fB\-defaults\fR \fIpath\fR]
+[\fB\-config\fR \fIpath\fR]
+.I user
+.PP
+.B bootstash
 \fBput\fR
 [\fB\-defaults\fR \fIpath\fR]
 [\fB\-config\fR \fIpath\fR]
@@ -46,10 +52,13 @@ call PAM.
 .B check-config ,
 .B provision-google ,
 .B links ,
+.B unlink ,
 and
-.B unlink
+.B mkdir
 are operator commands (usually
 .BR sudo ).
+.B mkdir
+must run as root.
 .B put
 copies into the caller’s cubby and must run as that Unix user, not
 root.
@@ -173,6 +182,31 @@ State files stay owned as
 .I $DATA/state
 (not root) so the daemon can still read them.
 .TP
+.B mkdir
+Create
+.RI $DATA/users/<user>
+the same way login does:
+mode
+.BR 02770 ,
+owner
+.IR user ,
+group
+.B UNIX_GROUP
+(packaged
+.BR bootstash ).
+Root only.
+Refuses UID 0, a name that is not a linkable passwd entry, and
+.B PAM=no
+(email cubbies are created by
+.BR put ).
+A second run succeeds when that directory already exists and is
+owned by
+.IR user ;
+it is not given to anyone else.
+Does not write the PAM map and does not create a Unix account.
+.I users/
+must already exist (start the daemon once).
+.TP
 .B put
 Copy files or directories into a cubby.
 Run as the Unix user who should own the files, not
@@ -184,7 +218,8 @@ With
 .B PAM=yes
 (the default) the cubby is
 .RI $DATA/users/<unix-name>/
-and must already exist (sign in first).
+and must already exist (sign in first, or
+.BR mkdir ).
 With
 .B PAM=no
 .B \-email
@@ -260,6 +295,7 @@ Used by
 .BR check-config ,
 .BR links ,
 .BR unlink ,
+.BR mkdir ,
 and
 .BR put .
 .TP
@@ -274,6 +310,7 @@ OIDC client secrets file. Default:
 writes it;
 .B links ,
 .B unlink ,
+.B mkdir ,
 and
 .B put
 do not use OIDC keys.

@@ -164,7 +164,18 @@ To drop a user's Google-to-Linux map (they must log in again; the
 cubby stays): `sudo bootstash unlink alice`. Changing or disabling
 the Unix account does not drop the map.
 
-After that login, that Unix user can put files into the cubby (not root).
+Root can create that cubby before the first login:
+
+```bash
+sudo bootstash mkdir alice
+```
+
+That is the same directory login creates (`2770` `alice:bootstash`).
+A second run succeeds when it is already owned by alice. With
+`PAM=no`, `put -email` creates the email cubby instead.
+
+After that login, or after `mkdir`, that Unix user can put files
+into the cubby (not root).
 Every name on the command is a source. `-t` is the only directory
 inside the cubby.
 With `PAM=no`, `put` writes one allowlisted address’s

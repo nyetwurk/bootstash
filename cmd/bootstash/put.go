@@ -267,7 +267,7 @@ func pamCubby(data string, u putUser) (string, error) {
 	st, err := os.Lstat(cubby)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", fmt.Errorf("no cubby for %s (sign in and link first)", u.Name)
+			return "", fmt.Errorf("no cubby for %s (sign in first, or bootstash mkdir)", u.Name)
 		}
 		return "", err
 	}

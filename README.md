@@ -105,7 +105,8 @@ that PAM user. The daemon runs as one service account so it can read
 those trees. HTTP refuses paths outside your folder.
 
 From a login, `bootstash put` (not sudo) copies every source into
-your cubby. `-t` is the only directory inside it. Ordinary `cp`
+your cubby. Root can create that directory first with `bootstash mkdir`.
+`-t` is the only directory inside it. Ordinary `cp`
 also works. Modes and what not to `chown`:
 [`QUICKSTART.md`](QUICKSTART.md) (Users and files).
 

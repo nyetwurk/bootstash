@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/nyet/bootstash/internal/config"
@@ -345,30 +344,23 @@ func (s *Server) ensureUserDir(pamUser string) error {
 	if err == nil && !pamauth.Linkable(acct) {
 		return pamauth.ErrDenied
 	}
-	usersfd, oerr := openDir(users)
-	if oerr != nil {
-		return oerr
+	uid, gid := -1, -1
+	if err == nil {
+		uid = acct.UID
+		gid = acct.GID
+		if g := s.unixGid(); g >= 0 {
+			gid = g
+		}
 	}
-	defer unix.Close(usersfd)
-	if merr := unix.Mkdirat(usersfd, pamUser, 0770); merr != nil && merr != syscall.EEXIST {
-		return merr
+	if err := osutil.MkdirOwner(users, pamUser, uid, gid); err != nil {
+		var ce *osutil.ChownError
+		if errors.As(err, &ce) {
+			log.Printf("%v", ce)
+			return nil
+		}
+		return err
 	}
-	fd, oerr := unix.Openat(usersfd, pamUser, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-	if oerr != nil {
-		return oerr
-	}
-	defer unix.Close(fd)
-	if err != nil {
-		return cubbyModeFD(fd, dir)
-	}
-	gid := acct.GID
-	if g := s.unixGid(); g >= 0 {
-		gid = g
-	}
-	if cerr := osutil.Fchown(fd, dir, acct.UID, gid); cerr != nil {
-		log.Printf("chown %s: %v", dir, cerr)
-	}
-	return cubbyModeFD(fd, dir)
+	return nil
 }
 
 func (s *Server) unixGid() int {

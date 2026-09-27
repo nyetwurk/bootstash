@@ -311,13 +311,20 @@ PAM name and clears `pam_user` on those sessions. The cubby stays.
 Changing or disabling the Unix account does not drop the map.
 Not an `ADMIN_USERS` HTTP power.
 
+`bootstash mkdir USER` (root only) creates `$DATA/users/USER`
+the same way login does (`02770`, owner USER, group `UNIX_GROUP`).
+A second run succeeds when that directory is already owned by USER.
+Refuses UID 0, a name that is not a linkable passwd entry, and
+`PAM=no`. Does not write the map.
+
 `bootstash put` copies files or directories into a cubby.
 Every positional argument is a source. `-t DIR` is the only
 directory inside that cubby.
 Not sudo. UID 0 is refused. Does not read OIDC secrets. Files
 `0660` (HTTP upload), dirs `2770` (cubby). With
 `PAM=yes` the cubby is `users/<caller>/` and must
-already exist. With `PAM=no`, `-email` selects one
+already exist (login or `mkdir`). `put` does not create it.
+With `PAM=no`, `-email` selects one
 `ALLOWED_EMAILS` address (omit it only when the list has a single
 address) and `put` creates `home/<id>/` owned by the caller.
 `home/` must already exist (`03773`). Do not add the caller to
@@ -328,6 +335,7 @@ group `bootstash`. Do not `chown` those files to `bootstash`.
 Jail, Alice/Bob, CSRF, oversize, a session without a cubby cannot
 read trees, Range,
 bad PAM, UID 0, DELETE, cubby `0711`/`2770`/`0640`, `links` / `unlink` PAM map,
+`mkdir` (root, same directory as login, refuses UID 0 and `PAM=no`),
 `put` into the caller’s cubby and `put -email` into one address
 cubby, two simultaneous email cubbies, allowlist reject before
 `/login`, `POST /logout` keeps the map, PKCE,
