@@ -16,7 +16,13 @@ password. `PAM=no` with `ALLOWED_EMAILS` gives each verified address
 its own cubby and no Unix password. Another issuer is another
 provider, not a new session model.
 
+[openvpn-deploy](https://github.com/nyetwurk/openvpn-deploy) creates
+the VPN this cubby serves: an end-to-end OpenVPN VPS on DigitalOcean,
+Google Compute Engine, AWS, or a local VM, and can install this cubby
+on that host.
+
 - **Install and first run:** [`QUICKSTART.md`](QUICKSTART.md)
+- **VPN VPS:** [openvpn-deploy](https://github.com/nyetwurk/openvpn-deploy)
 - **OpenVPN Connect:** [`OPENVPN.md`](OPENVPN.md) (paste `PUBLIC_URL`;
   import uses a short-lived unauthenticated URL)
 - **Config:** `bootstash(5)`
@@ -115,8 +121,9 @@ also works. Modes and what not to `chown`:
 - Not a high-assurance or regulated credential store (see Expectations)
 - Not OpenBao, HashiCorp Vault, or Vaultwarden (no unseal, KV API, or
   password-manager vault)
-- Not a VPN, IdP, or account provisioner (Connect import is
-  [`OPENVPN.md`](OPENVPN.md))
+- Not a VPN, IdP, or account provisioner (the VPS is
+  [openvpn-deploy](https://github.com/nyetwurk/openvpn-deploy); Connect
+  import is [`OPENVPN.md`](OPENVPN.md))
 - Not Samba, Nextcloud, or WebDAV (no collections, PROPFIND, or DAV
   clients). Upload is ordinary HTTP PUT/POST, not a sync product
 - Not a long-term archive or backup (see expiration, not yet shipped)
