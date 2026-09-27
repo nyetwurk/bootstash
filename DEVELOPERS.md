@@ -276,8 +276,10 @@ password on stdin, exit 0/1. The helper runs `pam_authenticate` +
 `pam_unix` works for a user other than `bootstash`. Do not put the
 password on argv. Do not make the helper a daemon. Do not add an
 operator man page (not a user command). `-pam-helper` overrides the
-path for tests. If the binary is missing, the daemon falls back to
-in-process PAM (dev only; `pam_unix` will fail unless root).
+path for tests. If the binary is missing, a Linux cgo build falls
+back to in-process PAM (dev only; `pam_unix` will fail unless root).
+`-tags nopam`, `CGO_ENABLED=0`, and non-Linux builds do not link
+libpam (`pam_start_confdir` is Linux-PAM only).
 
 Link table: `(issuer, sub) → pam_user`. One subject maps
 to at most one PAM user; one PAM user may have several subjects.

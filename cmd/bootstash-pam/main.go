@@ -1,5 +1,3 @@
-//go:build cgo
-
 // Copyright (C) 2026 Nye Liu
 // SPDX-License-Identifier: GPL-3.0-or-later
 

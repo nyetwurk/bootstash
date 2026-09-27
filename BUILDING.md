@@ -58,6 +58,11 @@ sudo apt-get update && sudo apt-get install -y \
 
 `golang-go` must satisfy the `go` line in `go.mod`.
 
+In-process PAM links libpam only for cgo on Linux. macOS OpenPAM has
+no `pam_start_confdir`, so those builds leave it out. The same skip
+is `-tags nopam` or `CGO_ENABLED=0`. The daemon still execs
+`-pam-helper` when that file is executable.
+
 `git-cliff` is not in apt. Needed only for GitHub-style notes
 (`scripts/release.py github`). `make deb` still writes
 `debian/changelog` without it. Pick one:
