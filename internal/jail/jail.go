@@ -123,18 +123,50 @@ func (r *Root) Replace(rel string, perm os.FileMode, body io.Reader) error {
 	return nil
 }
 
-// Mkdir creates a directory relative to the jail. It does not fchmod.
-// Linux chmod by a process that is not in the directory's group and
-// lacks CAP_FSETID silently drops S_ISGID (cubby is alice:bootstash;
+// Mkdir creates a directory relative to the jail. It does not fchmod
+// on Linux. chmod by a process that is not in the directory's group
+// and lacks CAP_FSETID silently drops S_ISGID (cubby is alice:bootstash;
 // alice is not in bootstash). mkdirat in a setgid parent already
-// inherits group and setgid; leave that in place.
+// inherits group and setgid there. Darwin mkdir does not copy S_ISGID,
+// so keepSetgid adds it only when the new directory lacks the bit.
 func (r *Root) Mkdir(rel string, perm os.FileMode) error {
 	dir, name, err := r.parentOf(rel)
 	if err != nil {
 		return err
 	}
 	defer unix.Close(dir)
-	return unix.Mkdirat(dir, name, uint32(perm&0777))
+	if err := unix.Mkdirat(dir, name, uint32(perm&0777)); err != nil {
+		return err
+	}
+	return keepSetgid(dir, name)
+}
+
+// keepSetgid sets S_ISGID on name when dirfd has it and name does not.
+// A no-op when the bit is already present, which is the Linux mkdirat
+// result. fchmod in that case would clear the bit for a caller outside
+// the directory group.
+func keepSetgid(dirfd int, name string) error {
+	var parent unix.Stat_t
+	if err := unix.Fstat(dirfd, &parent); err != nil {
+		return err
+	}
+	if uint32(parent.Mode)&0o2000 == 0 {
+		return nil
+	}
+	fd, err := unix.Openat(dirfd, name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd)
+	var child unix.Stat_t
+	if err := unix.Fstat(fd, &child); err != nil {
+		return err
+	}
+	mode := uint32(child.Mode) & 0o7777
+	if mode&0o2000 != 0 {
+		return nil
+	}
+	return unix.Fchmod(fd, mode|0o2000)
 }
 
 // Remove unlinks a file or empty directory inside the jail. It does not

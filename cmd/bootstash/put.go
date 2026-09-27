@@ -210,8 +210,9 @@ func emailCubby(data string, u putUser, id string) (string, error) {
 		if !os.IsNotExist(err) {
 			return "", err
 		}
-		// umask 0 so the directory is 0770. The setgid parent supplies
-		// group and S_ISGID. Do not chmod: chmod(2) clears S_ISGID
+		// umask 0 so the directory is 0770. Linux copies S_ISGID from
+		// the parent. Darwin does not; chmod it on only when missing.
+		// chmod of a directory that already has the bit can clear it
 		// when the caller is not in that group.
 		old := syscall.Umask(0)
 		mkErr := os.Mkdir(cubby, 0770)
@@ -221,6 +222,9 @@ func emailCubby(data string, u putUser, id string) (string, error) {
 				return "", cannotCreateCubby(home)
 			}
 			return "", mkErr
+		}
+		if err := copySetgid(home, cubby); err != nil {
+			return "", err
 		}
 		cst, err = os.Lstat(cubby)
 		if err != nil {
@@ -239,6 +243,20 @@ func emailCubby(data string, u putUser, id string) (string, error) {
 
 func cannotCreateCubby(home string) error {
 	return fmt.Errorf("cannot create a directory in %s (want mode 03773)", home)
+}
+
+// copySetgid sets S_ISGID on cubby when parent has it and cubby does not.
+// Linux mkdir already copies the bit. Darwin does not.
+func copySetgid(parent, cubby string) error {
+	pst, err := os.Lstat(parent)
+	if err != nil || pst.Mode()&os.ModeSetgid == 0 {
+		return err
+	}
+	st, err := os.Lstat(cubby)
+	if err != nil || st.Mode()&os.ModeSetgid != 0 {
+		return err
+	}
+	return os.Chmod(cubby, os.ModeSetgid|st.Mode().Perm())
 }
 
 func pamCubby(data string, u putUser) (string, error) {
