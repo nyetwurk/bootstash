@@ -61,8 +61,12 @@ func testConfig(dir string) *config.Config {
 		PAMService:         "bootstashd",
 		MaxUpload:          64,
 		UnixGroup:          "bootstash",
-		RequirePAMLink:     true,
+		PAM:                true,
 	}
+}
+
+func googleIDs(idp IDP) []Identity {
+	return []Identity{{Name: config.ProviderGoogle, Label: "Sign in with Google", IDP: idp}}
 }
 
 func newTestServer(t *testing.T, dir string, pam mapPAM) (*Server, *store.Store) {
@@ -74,7 +78,7 @@ func newTestServer(t *testing.T, dir string, pam mapPAM) (*Server, *store.Store)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := New(testConfig(dir), st, fakeIDP{}, pam, bytes.Repeat([]byte("k"), 32))
+	s, err := New(testConfig(dir), st, googleIDs(fakeIDP{}), pam, bytes.Repeat([]byte("k"), 32))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +331,7 @@ func TestHomeLoginRedirect(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/home/", nil)
 	req.AddCookie(c)
 	rr = do(s, req)
-	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/link" {
+	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/login" {
 		t.Fatalf("GET unlinked: %d %s", rr.Code, rr.Header().Get("Location"))
 	}
 	req = httptest.NewRequest(http.MethodPut, "/home/x", strings.NewReader("x"))
@@ -557,7 +561,7 @@ func TestBadPAMDoesNotLink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/link", strings.NewReader("username=alice&password=wrong"))
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("username=alice&password=wrong"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Origin", "https://stash.test")
 	req.AddCookie(&http.Cookie{Name: s.cookieName(), Value: sess.ID})
@@ -568,6 +572,73 @@ func TestBadPAMDoesNotLink(t *testing.T) {
 	_, ok, err := st.LookupLink(sess.Iss, sess.Sub)
 	if err != nil || ok {
 		t.Fatalf("link written ok=%v err=%v", ok, err)
+	}
+}
+
+func TestPAMOnlyLogin(t *testing.T) {
+	u, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Uid == "0" {
+		t.Skip("uid 0 cannot sign in")
+	}
+	root, err := user.LookupId("0")
+	if err != nil {
+		t.Skip(err)
+	}
+	dir := t.TempDir()
+	st, err := OpenStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := testConfig(dir)
+	cfg.GoogleClientID = ""
+	cfg.GoogleClientSecret = ""
+	s, err := New(cfg, st, googleIDs(fakeIDP{}), mapPAM{
+		u.Username:    "secret",
+		root.Username: "secret",
+		"alice":       "secret",
+	}, bytes.Repeat([]byte("k"), 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := do(s, httptest.NewRequest(http.MethodGet, "/login", nil))
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `action="/login"`) || strings.Contains(rr.Body.String(), "Sign in with Google") {
+		t.Fatalf("pam login form: %d %s", rr.Code, rr.Body.String())
+	}
+
+	post := func(body string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Origin", "https://stash.test")
+		return do(s, req)
+	}
+	rr = post("username=alice&password=wrong")
+	if rr.Code == http.StatusFound || !strings.Contains(rr.Body.String(), "not accepted") {
+		t.Fatalf("bad password: %d %s", rr.Code, rr.Body.String())
+	}
+	rr = post("username=" + url.QueryEscape(root.Username) + "&password=secret")
+	if rr.Code == http.StatusFound || !strings.Contains(rr.Body.String(), "not accepted") {
+		t.Fatalf("uid 0: %d %s", rr.Code, rr.Body.String())
+	}
+	rr = post("username=" + url.QueryEscape(u.Username) + "&password=secret")
+	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/home/" {
+		t.Fatalf("login: %d %s", rr.Code, rr.Header().Get("Location"))
+	}
+	links, err := st.ListLinks()
+	if err != nil || len(links) != 0 {
+		t.Fatalf("links %#v %v", links, err)
+	}
+	c := cookieNamed(rr, s.cookieName())
+	if c == nil {
+		t.Fatal("no session cookie")
+	}
+	sess, err := st.GetSession(c.Value)
+	if err != nil || sess.PAMUser != u.Username || sess.Iss != "" || sess.Sub != "" {
+		t.Fatalf("session %+v %v", sess, err)
 	}
 }
 
@@ -586,7 +657,7 @@ func TestGoodPAMLinksCurrentUser(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := "username=" + u.Username + "&password=pw"
-	req := httptest.NewRequest(http.MethodPost, "/link", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Origin", "https://stash.test")
 	req.AddCookie(&http.Cookie{Name: s.cookieName(), Value: sess.ID})
@@ -622,7 +693,7 @@ func TestUID0DoesNotLink(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := "username=" + root.Username + "&password=pw"
-	req := httptest.NewRequest(http.MethodPost, "/link", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Origin", "https://stash.test")
 	req.AddCookie(&http.Cookie{Name: s.cookieName(), Value: sess.ID})
@@ -675,7 +746,7 @@ func TestCallbackSetsCookie(t *testing.T) {
 	if rr.Code != http.StatusFound {
 		t.Fatalf("%d %s", rr.Code, rr.Body.String())
 	}
-	if loc := rr.Header().Get("Location"); loc != "/link" {
+	if loc := rr.Header().Get("Location"); loc != "/login" {
 		t.Fatalf("location %s", loc)
 	}
 	if cookieNamed(rr, s.cookieName()) == nil {
@@ -703,7 +774,7 @@ func TestCallbackRejects(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := s.putOauthTx(tx.Value, nonce, "", time.Now().Add(-time.Second)); err != nil {
+			if err := s.putOauthTx(tx.Value, config.ProviderGoogle, nonce, "", time.Now().Add(-time.Second)); err != nil {
 				t.Fatal(err)
 			}
 			return oauthCallback(state, tx)
@@ -765,7 +836,7 @@ func TestOauthTxCap(t *testing.T) {
 func TestOauthTxPurgeExpired(t *testing.T) {
 	s, _, _ := testServer(t)
 	for i := 0; i < oauthMaxTx; i++ {
-		if err := s.putOauthTx(fmt.Sprintf("%064x", i), "n", "v", time.Now().Add(-time.Second)); err != nil {
+		if err := s.putOauthTx(fmt.Sprintf("%064x", i), config.ProviderGoogle, "n", "v", time.Now().Add(-time.Second)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -834,28 +905,32 @@ func TestHTMLPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := &http.Cookie{Name: s.cookieName(), Value: sess.ID}
-	req := httptest.NewRequest(http.MethodGet, "/link", nil)
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
 	req.AddCookie(c)
 	rr = do(s, req)
 	if rr.Code != http.StatusOK {
-		t.Fatalf("link: %d", rr.Code)
+		t.Fatalf("login after auth: %d", rr.Code)
 	}
 	link := rr.Body.String()
 	for _, want := range []string{
 		`action="/logout"`,
 		"Sign out",
-		`action="/link"`,
+		`action="/login"`,
 		`name="username"`,
 		`name="password"`,
 		`class="reveal"`,
 		`aria-label="Show password"`,
 		`class="eye"`,
 		`class="brand"`,
-		"Not linked yet",
+		"Log in",
+		"x@y.z",
 	} {
 		if !strings.Contains(link, want) {
-			t.Fatalf("link missing %q: %s", want, link)
+			t.Fatalf("login missing %q: %s", want, link)
 		}
+	}
+	if strings.Contains(link, "Not linked yet") {
+		t.Fatalf("login still says link: %s", link)
 	}
 
 	cookie := linkedSession(t, s, st, "alice")
@@ -1293,7 +1368,7 @@ func TestHTTPCookieFlags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := New(cfg, st, fakeIDP{}, mapPAM{"alice": "secret"}, bytes.Repeat([]byte("k"), 32))
+	s, err := New(cfg, st, googleIDs(fakeIDP{}), mapPAM{"alice": "secret"}, bytes.Repeat([]byte("k"), 32))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1424,7 +1499,7 @@ func TestLinkRotatesSessionCookie(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := "username=" + u.Username + "&password=pw"
-	req := httptest.NewRequest(http.MethodPost, "/link", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Origin", "https://stash.test")
 	req.AddCookie(&http.Cookie{Name: s.cookieName(), Value: sess.ID})
@@ -1496,8 +1571,8 @@ func TestOpenVPNProfileImport(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/openvpn-api/profile", nil)
 	req.AddCookie(unlinked)
 	rr = do(s, req)
-	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/link" {
-		t.Fatalf("GET unlinked: %d %s", rr.Code, rr.Header().Get("Location"))
+	if rr.Code != http.StatusOK || rr.Header().Get("Ovpn-WebAuth") != ovpnWebAuth || !strings.Contains(rr.Body.String(), `action="/login"`) {
+		t.Fatalf("GET unlinked: %d %s %s", rr.Code, rr.Header().Get("Ovpn-WebAuth"), rr.Body.String())
 	}
 
 	c := linkedSession(t, s, st, "alice")

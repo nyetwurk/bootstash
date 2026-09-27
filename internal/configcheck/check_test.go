@@ -42,14 +42,19 @@ func TestSummaryIncludesAdmins(t *testing.T) {
 }
 
 func TestNoticeEmptyAllowlist(t *testing.T) {
-	if Notice(&config.Config{RequirePAMLink: true}) != "" {
-		t.Fatal("default link required")
+	if Notice(&config.Config{PAM: true}) != "" {
+		t.Fatal("default pam cubbies")
 	}
-	if Notice(&config.Config{RequirePAMLink: false, AllowedEmails: []string{"a@b.co"}}) != "" {
+	listed := &config.Config{PAM: false, GoogleClientID: "cid", AllowedEmails: []string{"a@b.co"}}
+	if Notice(listed) != "" {
 		t.Fatal("listed")
 	}
-	if Notice(&config.Config{RequirePAMLink: false}) == "" {
+	if Notice(&config.Config{PAM: false, GoogleClientID: "cid"}) == "" {
 		t.Fatal("expected warning")
+	}
+	unused := Notice(&config.Config{PAM: true, AllowedEmails: []string{"a@b.co"}})
+	if !strings.Contains(unused, "ALLOWED_EMAILS") {
+		t.Fatalf("expected unused allowlist warning, got %q", unused)
 	}
 }
 

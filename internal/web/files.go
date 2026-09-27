@@ -30,11 +30,7 @@ func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 	sess := s.session(r)
 	if sess == nil || !s.sessionHasCubby(sess) {
 		if r.Method == http.MethodGet || r.Method == http.MethodHead {
-			loc := "/login"
-			if sess != nil {
-				loc = "/link"
-			}
-			http.Redirect(w, r, loc, http.StatusFound)
+			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
 		http.Error(w, "login required", http.StatusUnauthorized)
@@ -381,7 +377,7 @@ func (s *Server) chownRel(root *jail.Root, rel, pamUser string) {
 		return
 	}
 	gid := acct.GID
-	if g, err := pamauth.LookupGroupGID(s.config().UnixGroup); err == nil {
+	if g := s.unixGid(); g >= 0 {
 		gid = g
 	}
 	if err := root.Chown(rel, acct.UID, gid); err != nil {

@@ -309,7 +309,7 @@ func TestPutEmailCubby(t *testing.T) {
 		t.Fatal(err)
 	}
 	op := cfgArgs[3]
-	body := "DATA=" + data + "\nREQUIRE_PAM_LINK=0\nALLOWED_EMAILS=Alice@Gmail.com\nALLOWED_EMAILS=bob@gmail.com\n"
+	body := "DATA=" + data + "\nPAM=no\nALLOWED_EMAILS=Alice@Gmail.com\nALLOWED_EMAILS=bob@gmail.com\n"
 	if err := os.WriteFile(op, []byte(body), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +373,7 @@ func TestPutEmailCubbySoleAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 	op := cfgArgs[3]
-	if err := os.WriteFile(op, []byte("DATA="+data+"\nREQUIRE_PAM_LINK=0\nALLOWED_EMAILS=only@gmail.com\n"), 0644); err != nil {
+	if err := os.WriteFile(op, []byte("DATA="+data+"\nPAM=no\nALLOWED_EMAILS=only@gmail.com\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	src := filepath.Join(t.TempDir(), "a.txt")
@@ -395,7 +395,7 @@ func TestPutEmailCubbySoleAddress(t *testing.T) {
 func TestPutEmailCubbyNeedsHome(t *testing.T) {
 	u, data, cfgArgs := setupPutTest(t)
 	op := cfgArgs[3]
-	if err := os.WriteFile(op, []byte("DATA="+data+"\nREQUIRE_PAM_LINK=0\nALLOWED_EMAILS=only@gmail.com\n"), 0644); err != nil {
+	if err := os.WriteFile(op, []byte("DATA="+data+"\nPAM=no\nALLOWED_EMAILS=only@gmail.com\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	src := filepath.Join(t.TempDir(), "a.txt")

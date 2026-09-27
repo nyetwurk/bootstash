@@ -52,14 +52,34 @@ func (p *Provider) get(ctx context.Context) (*oidc.Provider, *oidc.IDTokenVerifi
 	return p.provider, p.verifier, nil
 }
 
+// SetClient replaces the OAuth client. A changed id drops the cached
+// discovery document so the next exchange verifies against the new client.
+func (p *Provider) SetClient(id, secret string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.ClientID == id && p.ClientSecret == secret {
+		return
+	}
+	p.ClientID = id
+	p.ClientSecret = secret
+	p.provider = nil
+	p.verifier = nil
+}
+
 func (p *Provider) oauth(ctx context.Context, redirectURL string) (*oauth2.Config, error) {
 	prov, _, err := p.get(ctx)
 	if err != nil {
 		return nil, err
 	}
+	p.mu.Lock()
+	id, secret := p.ClientID, p.ClientSecret
+	p.mu.Unlock()
 	return &oauth2.Config{
-		ClientID:     p.ClientID,
-		ClientSecret: p.ClientSecret,
+		ClientID:     id,
+		ClientSecret: secret,
 		RedirectURL:  redirectURL,
 		Endpoint:     prov.Endpoint(),
 		Scopes:       []string{oidc.ScopeOpenID, "email", "profile"},

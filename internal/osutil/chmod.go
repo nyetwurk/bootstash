@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/sys/unix"
 )
 
 // Confine returns a cleaned path that is root or a descendant of root.
@@ -18,6 +20,25 @@ func Confine(root, path string) (string, error) {
 		return "", os.ErrInvalid
 	}
 	return path, nil
+}
+
+// Fchmod sets mode on fd (does not follow a path). Logs when Unix bits change.
+func Fchmod(fd int, path string, mode os.FileMode) error {
+	var st unix.Stat_t
+	if err := unix.Fstat(fd, &st); err != nil {
+		return err
+	}
+	// Stat_t.Mode is uint32 on Linux and uint16 on Darwin.
+	from := uint32(st.Mode) & 0o7777
+	to := UnixBits(mode)
+	if from == to {
+		return nil
+	}
+	if err := unix.Fchmod(fd, to); err != nil {
+		return err
+	}
+	NoteUnixChmod(path, from, to)
+	return nil
 }
 
 // Chmod sets mode. Logs when the Unix permission bits actually change.

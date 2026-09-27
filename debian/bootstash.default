@@ -8,5 +8,6 @@
 # PUBLIC_URL=
 # ADMIN_USERS=
 # ALLOWED_EMAILS=
-# REQUIRE_PAM_LINK=1
+# PAM=yes
+# IDP=google
 # OVPN_TOKEN=auto

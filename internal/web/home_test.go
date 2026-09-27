@@ -72,12 +72,12 @@ func newScriptServer(t *testing.T, dir string, idp IDP, emails []string, require
 	t.Helper()
 	cfg := testConfig(dir)
 	cfg.AllowedEmails = emails
-	cfg.RequirePAMLink = requirePAM
+	cfg.PAM = requirePAM
 	st, err := OpenStore(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := New(cfg, st, idp, mapPAM{"alice": "secret"}, bytes.Repeat([]byte("k"), 32))
+	s, err := New(cfg, st, googleIDs(idp), mapPAM{"alice": "secret"}, bytes.Repeat([]byte("k"), 32))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,8 +106,8 @@ func TestCallbackAllowlist(t *testing.T) {
 	if cookieNamed(rr, s.cookieName()) != nil {
 		t.Fatal("unlisted session cookie")
 	}
-	if loc := rr.Header().Get("Location"); loc == "/link" {
-		t.Fatal("unlisted reached /link")
+	if loc := rr.Header().Get("Location"); loc == "/login" {
+		t.Fatal("unlisted reached login")
 	}
 
 	dir = t.TempDir()
@@ -149,7 +149,7 @@ func TestCallbackEmptyListStillLinks(t *testing.T) {
 	s, _, _ := testServer(t)
 	state, tx := googleLogin(t, s)
 	rr := do(s, oauthCallback(state, tx))
-	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/link" {
+	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/login" {
 		t.Fatalf("admit-all: %d %s", rr.Code, rr.Header().Get("Location"))
 	}
 }

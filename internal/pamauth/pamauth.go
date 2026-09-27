@@ -6,6 +6,7 @@ package pamauth
 
 import (
 	"errors"
+	"os"
 	"os/user"
 	"path/filepath"
 	"strconv"
@@ -15,6 +16,20 @@ import (
 
 // DefaultService is the packaged PAM stack (/etc/pam.d/bootstashd).
 const DefaultService = "bootstashd"
+
+// New returns Helper when helperPath is an executable, else in-process PAM.
+// helperPath empty means DefaultHelperPath. In-process PAM is compiled in
+// only for cgo on Linux (without -tags nopam). Otherwise New returns an
+// authenticator that refuses every password.
+func New(service, helperPath string) Authenticator {
+	if helperPath == "" {
+		helperPath = DefaultHelperPath
+	}
+	if st, err := os.Stat(helperPath); err == nil && !st.IsDir() && st.Mode()&0o111 != 0 {
+		return Helper{Path: helperPath, Service: service}
+	}
+	return inProcess(service)
+}
 
 // ErrDenied is a failed username/password check.
 var ErrDenied = errors.New("pam authentication failed")

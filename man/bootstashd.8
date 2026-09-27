@@ -12,9 +12,16 @@ bootstashd \- convenience cubby for bootstrap files
 [\fB\-pam\-helper\fR \fIpath\fR]
 .SH DESCRIPTION
 .B bootstashd
-is the bootstash daemon. After Google OpenID Connect and a one-time PAM
-link to an existing Unix account, it serves the linked user’s tree
-(read/write) over HTTP or HTTPS.
+is the bootstash daemon. After sign-in it serves that user’s tree
+(read/write) over HTTP or HTTPS. With an identity provider and
+.B PAM=yes
+the sign-in is that provider, then a one-time Unix login to an
+existing account. With no provider and
+.B PAM=yes
+the sign-in is that Unix username and password. With
+.B PAM=no
+the cubby is the verified-email directory and there is no Unix
+password.
 .PP
 Packaged
 .B TLS=auto
@@ -46,7 +53,7 @@ from
 and
 .B /rest/GetAutologin
 so Connect opens a normal browser instead of a password dialog.
-Then the usual Google sign-in. Once linked, a browser GET of that URL
+Then the usual sign-in. Once the session has a cubby, a browser GET of that URL
 is a page that opens
 .B openvpn://import-profile/
 with a one-time token (60 seconds, two GETs, then 404; also dead once
@@ -98,18 +105,24 @@ is set or can be derived from
 .B hostname \-f
 if none) and the first TCP
 .B LISTEN
-port, and
+port.
+.B PAM=no
+and
+.B IDP=google
+also require
 .B OIDC_GOOGLE_CLIENT_ID
-is set (usually the Google client JSON in
+(usually the Google client JSON in
 .IR /etc/bootstash/oidc-google.json ).
+.B PAM=yes
+with no identity provider does not.
 .PP
 PAM for
-.B POST /link
+.B POST /login
 is a setuid helper
 .I /usr/lib/bootstash/pam
 (not on
 .BR PATH ).
-UID 0 is never linked (the helper does not check that password).
+UID 0 is never logged in (the helper does not check that password).
 Operators do not run it. Do not set systemd
 .B NoNewPrivileges= .
 An operator drops that map with
@@ -118,7 +131,7 @@ An operator drops that map with
 there is no HTTP
 .BR /unlink .
 Changing or disabling the Unix account does not drop the map.
-The listing and link pages offer
+The listing and login pages offer
 .B Sign out
 .RB ( POST /logout ):
 this session cookie only; the PAM map stays.
@@ -188,7 +201,7 @@ Setuid PAM helper
 .BR root:bootstash
 after configure). The
 daemon execs it for
-.BR /link .
+.BR /login .
 Not on
 .BR PATH .
 .TP
@@ -207,8 +220,9 @@ not a conffile. Commented
 .BR PUBLIC_URL ,
 .BR ADMIN_USERS ,
 .BR ALLOWED_EMAILS ,
+.BR PAM ,
 and
-.BR REQUIRE_PAM_LINK
+.BR IDP
 on first create. See
 .BR bootstash (5).
 .TP
@@ -239,13 +253,13 @@ is
 .B bootstash:bootstash
 (setgid, sticky, other can create and traverse, other cannot list).
 With
-.B REQUIRE_PAM_LINK=0
-an unlinked session uses
+.B PAM=no
+a provider session uses
 .IR home/<id>/ ,
 created by
 .B bootstash put
 as that user.
-A linked session still uses
+A session that already has a Unix user still uses
 .IR users/<name>/ .
 .B bootstash put
 must run as the cubby owner, not root; files are
@@ -266,7 +280,7 @@ to
 .BR bootstash .
 Start and SIGHUP reapply
 .B 2770
-on existing cubbies and linked names.
+on existing cubbies and mapped names.
 Each
 .B /home
 GET or HEAD also fixes that path and, for a listing, its

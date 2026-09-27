@@ -19,21 +19,29 @@ README “Expectations.”
 - Public **Debian `.deb`**. How to build it: [`BUILDING.md`](BUILDING.md)
 - One process UID (`bootstash`). HTTP isolation is a path jail
   (`openat`), not `setfsuid`. Do not serve `$HOME` as the PAM uid.
-  `POST /link` is the setuid helper (Auth). Do not set
+  `POST /login` is the setuid helper (Auth). Do not set
   `NoNewPrivileges=`
 - File API: GET (Range/206), PUT/POST upload, DELETE of own files and
   **empty** directories. No rename, no WebDAV
-- Identity is `(issuer, sub)`, never email-as-path. Packaged
-  `REQUIRE_PAM_LINK=1` still requires PAM link. `REQUIRE_PAM_LINK=0`
-  serves `$DATA/home/<id>/` for an unlinked session. `id` is lowercase
+- Identity for provider auth is `(issuer, sub)`, never
+  email-as-path. `IDP` is repeatable (mentioning it replaces
+  auto-detection). Unset: Google is on when a client id is set.
+  `IDP=google` requires that id. An empty `IDP` list means no
+  providers. Only `google` is implemented. A later issuer is a new
+  adapter + helper-owned keys under `/etc/bootstash/`, registered
+  by name, same session model
+- `PAM=yes` (packaged default) maps a session onto
+  `$DATA/users/<unix name>/`. With a provider, `POST /login` after
+  auth writes that map. With no provider, `/login` is the Unix
+  username and password and there is no map row. `PAM=no` serves
+  `$DATA/home/<id>/` for a provider session and does not ask for a
+  Unix password; at least one provider is required. `id` is lowercase
   hex SHA-256 of the trimmed, lowercased verified email (not the
   address, not `issuer||sub`). `ALLOWED_EMAILS` is repeatable; empty
-  admits whoever the Google client admits. Each listed address pins
+  admits whoever the provider admits. Each listed address pins
   `(issuer, sub)` on first login in `state/subjects.json`. Two
   addresses are two cubbies. Do not `useradd`. Do not grow a
   password/app-user table
-- Currently Google only. A later IdP is a new adapter + helper-owned
-  keys under `/etc/bootstash/`, not a new session model
 - Not ACME. Packaged `TLS=auto` (`maybe` is the same). Hook pick
   order, dest PEMs, and `PUBLIC_URL`: Config below. Do not read
   `/etc/letsencrypt/live`. Never copy every `live/` cert.
@@ -51,7 +59,7 @@ client id/secret or `OIDC_CRYPTO`), then
 `/etc/default/bootstash` (not a conffile; created on configure from
 `/usr/lib/bootstash/default` if missing; `0644` `root:root` like other
 `/etc/default` files; commented `DATA`, `LISTEN`,
-`PUBLIC_URL`, `ADMIN_USERS`, `ALLOWED_EMAILS`, `REQUIRE_PAM_LINK`;
+`PUBLIC_URL`, `ADMIN_USERS`, `ALLOWED_EMAILS`, `PAM`, `IDP`;
 operator diffs; never OIDC secrets;
 `dpkg` does not merge a new packaged copy over edits), then
 `/etc/bootstash/oidc-google.json` (helper-written; not a
@@ -98,7 +106,8 @@ it on upgrade.
 After cert sync (copy, or dest PEM removal when `TLS=no`) it
 `try-restart`s if already active, or starts if
 `bootstash check-config` would pass (same as `bootstashd -t`).
-First install without OIDC stays down.
+`PAM=no` or `IDP=google` without a client id stays down. `PAM=yes`
+with no provider can start.
 
 Do not rewrite the request from `X-Forwarded-Proto` /
 `X-Forwarded-Host`. Browser origin is `PUBLIC_URL` (OIDC, CSRF,
@@ -144,22 +153,22 @@ can traverse in):
   GET/HEAD also `chgrp` files on that path (and listing children)
   and set `0640`, using `openat`/`O_NOFOLLOW`/`fchmod`/`fchown`
   (not pathname `chmod`). Full-tree pass is start/SIGHUP only.
-- `home/<id>/` — one verified email when `REQUIRE_PAM_LINK=0` and the
-  session is unlinked. `id` is the email hash above. Parent `home/`
+- `home/<id>/` — one verified email when `PAM=no`. `id` is the
+  email hash above. Parent `home/`
   is `03773` `bootstash:bootstash` (setgid, sticky, other can create
   and traverse, other cannot list). `bootstash put` creates the
   cubby as the caller. `mkdir` inherits setgid from `home/`; do not
   `chmod` that directory (`chmod(2)` drops setgid when the caller
   is not in group `bootstash`). The caller is not added to that
   group. The daemon does not create the cubby and does not `chown`
-  the uid to `bootstash`. A linked session still uses
+  the uid to `bootstash`. A session that already has a Unix user still uses
   `users/<pam>/`. HTTP for one session does not open another
   address’s hash.
 - `state/` — sessions, OIDC→PAM map, per-address subject pins
   (`subjects.json`), crypto key. `0700`, never HTTP.
   Writes (including `sudo bootstash unlink`) chown files to the
   state directory owner so `User=bootstash` can still read them.
-  Link and session mutations take `flock` on `state/.lock` so the
+  Map and session mutations take `flock` on `state/.lock` so the
   CLI and daemon cannot interleave a revocation.
 
 Every file `open`/`create`/`unlink` is `openat` from the jail root.
@@ -174,14 +183,14 @@ cubby → `2770`). Do not fchmod cubby dirs: chmod(2) drops
 is not in `bootstash`) and lacks `CAP_FSETID`. PUT/POST write a sibling temp
 then `renameat` so a failed upload keeps the old file.
 
-Routes: `/login`, `/oidc/callback`, `/link`, `/logout`, `/home/`,
+Routes: `/login`, `/oidc/callback`, `/logout`, `/home/`,
 `/openvpn-api/profile`, `/rest/GetUserlogin`, `/rest/GetAutologin`.
 HEAD `/openvpn-api/profile` is `200` with `Ovpn-WebAuth:
 bootstash,external` (OpenVPN Connect URL import; `external` so
 Google OIDC runs in a normal browser) unless `OVPN_TOKEN=no`. Unauthenticated GET there is
 `200` login HTML with that header (not a 302: Connect follows
 redirects and would drop it) and sets a short-lived cookie so
-OIDC/`/link` return to this URL. Linked browser GET (`Accept:
+OIDC and the Unix password return to this URL. A browser GET that already has a cubby (`Accept:
 text/html`) is a page with `openvpn://import-profile/` plus a
 one-time `?token=` URL (60s, two GETs, then 404; Connect fetches
 that itself; no session cookie, no `Ovpn-WebAuth`). The ticket stores
@@ -205,7 +214,7 @@ launch Connect for that user’s own profile; the other site does not
 receive the file). Several without a unique `client.ovpn`: picker
 (one ticket per profile at render, tap, no `location.replace`). None:
 empty message, not `/home/`.
-Non-HTML linked GET (and `?download=1`) serves the picked profile
+Non-HTML GET that already has a cubby (and `?download=1`) serves the picked profile
 as `application/x-openvpn-profile` attachment, or 302 `/home/` if
 there is no unique pick. `?embedded=true` is an HTML page that
 `postMessage`s `PROFILE_DOWNLOAD_SUCCESS`. Probe and import
@@ -215,24 +224,25 @@ decisions log as `openvpn ...` (journalctl); token lines omit
 header (no `WWW-Authenticate`) unless `OVPN_TOKEN=no`. That is the
 spec bounce off Access Server REST into the browser; not Basic Auth
 and not a profile.
-GET/HEAD `/home` without a cubby redirects to `/login` (or
-`/link` if the cookie is unlinked and `REQUIRE_PAM_LINK=1`). Other methods return 401.
+GET/HEAD `/home` without a cubby redirects to `/login`. Other methods return 401.
 Unknown `?provider=` redirects to `/login`. GET `/logout` redirects
 to `/`.
-With `REQUIRE_PAM_LINK=1`, unlinked sessions only reach login,
-callback, `/link`, `/logout`, and `/openvpn-api/profile` (which
-sends them to `/link`). With `REQUIRE_PAM_LINK=0`, an unlinked
-session that has a verified email also reaches `/home/` and the
-OpenVPN handoff for that email’s cubby.
-The link table is `bootstash links` and `bootstash unlink USER`
-(operator access to `$DATA/state`), not HTTP.
+With `PAM=yes` and a provider, a session with no Unix user only
+reaches login, callback, `/logout`, and `/openvpn-api/profile`
+(which shows the password form). With `PAM=no`, a session that
+has a verified email also reaches `/home/` and the OpenVPN
+handoff for that email’s cubby. There is no Unix password step.
+With no provider, `/login` is the Unix password and the session
+is already `users/<name>/`.
+The map is listed with `bootstash links` and dropped with
+`bootstash unlink USER` (operator access to `$DATA/state`), not HTTP.
 HTML **Sign out** is `POST /logout`: this session file and cookie only.
 The PAM map stays. Not unlink.
 HTML is a few templates, large targets (laptop, tablet, or phone),
 packaged `:root` + `prefers-color-scheme`. No SPA, no second desktop
 UI, no theme picker. Every response sets `nosniff`,
 `Referrer-Policy: same-origin`, and
-`Content-Security-Policy: frame-ancestors 'none'` (inline `/link`,
+`Content-Security-Policy: frame-ancestors 'none'` (inline `/login`,
 listing, and OpenVPN handoff JS stay; do not add a strict
 `script-src` without a nonce).
 File GET uses `mime.FormatMediaType` for `Content-Disposition`.
@@ -252,7 +262,13 @@ text/plain.
 
 ## Auth
 
-OIDC first (Google issuer `https://accounts.google.com`). `/login`
+With no identity provider and `PAM=yes`, `POST /login` is the Unix
+username and password (CSRF, uid 0 refused).
+The session stores that PAM name and no issuer or subject, and does
+not write `links.json`.
+
+Otherwise OIDC first (Google issuer `https://accounts.google.com`). The
+oauth transaction records which provider started the login. `/login`
 sets a one-time oauth cookie (`__Host-bootstash-oauth` when
 `PUBLIC_URL` is https, else `bootstash_oauth`) bound to the signed
 state. AuthCodeURL adds PKCE S256; the verifier is stored in that
@@ -260,11 +276,11 @@ transaction. `/oidc/callback` requires the cookie, consumes the
 transaction, and sends the verifier on Exchange. A non-empty
 `ALLOWED_EMAILS` then requires `email_verified` and a listed
 address, and pins `(issuer, sub)` before any session cookie.
-Anyone else gets a login error and never `/link`. Empty list:
-whoever the client admits, and no pin. Then PAM `POST /link`,
-unless `REQUIRE_PAM_LINK=0` and this session’s email cubby is the
-tree (a PAM link still wins and uses `users/<pam>/`). `/link`
-rotates the session id and cookie. Other
+Anyone else gets a login error and never the password form. Empty list:
+whoever the client admits, and no pin. Then `POST /login` when
+`PAM=yes`. With `PAM=no` the email cubby is the tree and there is
+no Unix password (an existing map row still uses `users/<pam>/`).
+`POST /login` after auth rotates the session id and cookie. Other
 sessions for that `(issuer, sub)` lose PAM when the mapping changes
 to a different Unix name. The daemon
 (`User=bootstash`) does not call PAM in process. It execs
@@ -281,9 +297,9 @@ back to in-process PAM (dev only; `pam_unix` will fail unless root).
 `-tags nopam`, `CGO_ENABLED=0`, and non-Linux builds do not link
 libpam (`pam_start_confdir` is Linux-PAM only).
 
-Link table: `(issuer, sub) → pam_user`. One subject maps
+Map (`$DATA/state/links.json`): `(issuer, sub) → pam_user`. One subject maps
 to at most one PAM user; one PAM user may have several subjects.
-UID 0 is never linked (`POST /link` and the helper refuse it).
+UID 0 is never logged in (`POST /login` and the helper refuse it).
 
 `bootstash provision-google` prints `$PUBLIC_URL/oidc/callback` and
 installs the JSON (placement: Config). It does **not** create the
@@ -300,8 +316,8 @@ Every positional argument is a source. `-t DIR` is the only
 directory inside that cubby.
 Not sudo. UID 0 is refused. Does not read OIDC secrets. Files
 `0660` (HTTP upload), dirs `2770` (cubby). With
-`REQUIRE_PAM_LINK=1` the cubby is `users/<caller>/` and must
-already exist. With `REQUIRE_PAM_LINK=0`, `-email` selects one
+`PAM=yes` the cubby is `users/<caller>/` and must
+already exist. With `PAM=no`, `-email` selects one
 `ALLOWED_EMAILS` address (omit it only when the list has a single
 address) and `put` creates `home/<id>/` owned by the caller.
 `home/` must already exist (`03773`). Do not add the caller to
@@ -309,12 +325,13 @@ group `bootstash`. Do not `chown` those files to `bootstash`.
 
 ## Tests that matter
 
-Jail, Alice/Bob, CSRF, oversize, unlinked cannot read trees, Range,
+Jail, Alice/Bob, CSRF, oversize, a session without a cubby cannot
+read trees, Range,
 bad PAM, UID 0, DELETE, cubby `0711`/`2770`/`0640`, `links` / `unlink` PAM map,
 `put` into the caller’s cubby and `put -email` into one address
 cubby, two simultaneous email cubbies, allowlist reject before
-`/link`, `POST /logout` keeps the map, PKCE,
-session rotate on `/link`, relink drops other sessions, oauth login
+`/login`, `POST /logout` keeps the map, PKCE,
+session rotate on `POST /login` after auth, a new map drops other sessions, oauth login
 cap, response headers, GET `/home` login redirect, HTML 404 / login-fail
 pages, `.ovpn` MIME, HEAD `/openvpn-api/profile`, REST `Ovpn-WebAuth`
 bounce, import `?token=` (no session cookie, 404 after logout or

@@ -64,11 +64,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	idp := &oidcgoogle.Provider{
-		ClientID:     cfg.GoogleClientID,
-		ClientSecret: cfg.GoogleClientSecret,
-	}
-	srv, err := web.New(cfg, st, idp, pamauth.New(cfg.PAMService, *pamHelper), key)
+	ids := []web.Identity{{
+		Name:  config.ProviderGoogle,
+		Label: "Sign in with Google",
+		IDP: &oidcgoogle.Provider{
+			ClientID:     cfg.GoogleClientID,
+			ClientSecret: cfg.GoogleClientSecret,
+		},
+	}}
+	srv, err := web.New(cfg, st, ids, pamauth.New(cfg.PAMService, *pamHelper), key)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -157,7 +157,7 @@ and clear
 .B pam_user
 on those sessions.
 The next Google sign-in for those subjects must
-.B POST /link
+.B POST /login
 again.
 Does not delete the cubby.
 There is no HTTP
@@ -181,14 +181,12 @@ Run as the Unix user who should own the files, not
 .BR sudo ).
 UID 0 is refused.
 With
-.B REQUIRE_PAM_LINK=1
+.B PAM=yes
 (the default) the cubby is
 .RI $DATA/users/<unix-name>/
-and must already exist (sign in and
-.B POST /link
-first).
+and must already exist (sign in first).
 With
-.B REQUIRE_PAM_LINK=0
+.B PAM=no
 .B \-email
 .I addr
 selects one
@@ -304,7 +302,7 @@ to read stdin.
 Verified address for
 .B put
 when
-.B REQUIRE_PAM_LINK=0 .
+.B PAM=no .
 Required when
 .B ALLOWED_EMAILS
 has more than one address.

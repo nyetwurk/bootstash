@@ -9,10 +9,12 @@ first-run artifacts — from whatever browser you have on the road.
 It is not a secrets engine (no unseal, leases, or KV API). It is not
 a VPN: it hands a profile to Connect; it does not terminate tunnels.
 Bind wherever you want (loopback, LAN, a tunnel NIC, later a public
-address). Auth is currently Google OIDC. The packaged default links
-that login to PAM. `REQUIRE_PAM_LINK=0` with `ALLOWED_EMAILS` gives
-each verified address its own cubby and no Unix password. Other issuers
-can be added later.
+address). Sign-in is a list of identity providers (Google today).
+PAM maps that auth onto a local Unix user's directory. With no
+provider configured, the packaged default is a Unix username and
+password. `PAM=no` with `ALLOWED_EMAILS` gives each verified address
+its own cubby and no Unix password. Another issuer is another
+provider, not a new session model.
 
 - **Install and first run:** [`QUICKSTART.md`](QUICKSTART.md)
 - **OpenVPN Connect:** [`OPENVPN.md`](OPENVPN.md) (paste `PUBLIC_URL`;
@@ -50,21 +52,24 @@ Debian hosts that already have **PAM accounts**. The person using it is
 a **road warrior**: laptop, tablet, or phone, away from the usual
 shell.
 
-Typical first session:
+Typical first session when Google is configured:
 
 - Reach the daemon
 - Sign in with Google
 - Once: Linux username and password
 - Download bootstrap files, or paste this origin into OpenVPN Connect
 
+With no identity provider, sign in with the Linux username and password.
+
 Install is a **public `.deb`**. Paste `PUBLIC_URL` into OpenVPN
 Connect: [`OPENVPN.md`](OPENVPN.md).
 
 ## What you can do
 
-- Sign in with Google
-- Link that sign-in to your existing Linux account (the same one ssh
-  already uses). Username + password, once
+- Sign in with Google, then log in with your existing Linux account
+  (the same one ssh already uses). Username + password, once
+- Or sign in with that username and password when no identity provider
+  is configured
 - Browse **your** folder that other people cannot see
 - Download files, including large ones (Range so a browser can play or
   save them)
@@ -73,17 +78,19 @@ Connect: [`OPENVPN.md`](OPENVPN.md).
 - Upload into **your** folder
 - From a host login: `bootstash put` copies every file into **your** folder (`-t` for a directory inside it; not sudo)
 - Delete files (and empty folders) in **your** folder
-- Sign out (this browser session; the Linux link stays)
+- Sign out (this browser session; the map stays)
 
-Later visits only need Google. Changing or disabling the Unix account
-does not drop the map. The Linux password is not used again until an
-operator runs `bootstash unlink` (that user's subjects must link
-again).
+After that Unix login, later visits only need Google. Changing or
+disabling the Unix account does not drop the map. The Linux password
+is not used again until an operator runs `bootstash unlink` (that
+user's subjects must log in again). A password-only login asks for
+the Unix password each visit.
 
-Your Google email is not a folder name. With the packaged default,
-folders follow the linked Linux username. With `REQUIRE_PAM_LINK=0`,
-each verified address is its own cubby, named by the SHA-256 of that
-address. Identity is the provider’s `(issuer, sub)`.
+Your Google email is not a folder name. With PAM left on, folders
+follow the Unix username (after Google, or the password login when
+no identity provider is configured). With `PAM=no`, each verified
+address is its own cubby, named by the SHA-256 of that address.
+Identity for provider auth is `(issuer, sub)`.
 
 ## Listen
 
@@ -133,7 +140,9 @@ will send). Reload after changing `PUBLIC_URL` or installing
 
 ### Obvious issues
 
-- First install without a Google client JSON stays down
+- `PAM=no`, or `IDP=google`, without a Google client JSON stays down.
+  The packaged default (`PAM=yes`, `IDP` unset) can start with no
+  JSON: the login is a Unix username and password
 - Desktop (`installed`) JSON is rejected; download the **Web
   application** client
 - Consent screen in Testing: add your Google account as a test user,
@@ -148,11 +157,13 @@ will send). Reload after changing `PUBLIC_URL` or installing
   keeps the listen port (omitted only for 80/443)
 - `TLS=no` keeps TCP binds on HTTP. Write `PUBLIC_URL` as `https://…`
   when a proxy terminates TLS
-- Google email is not a folder name. After OIDC, `POST /link` with an
-  existing Linux user (not root), unless `REQUIRE_PAM_LINK=0`
+- Google email is not a folder name. After a provider auth, `POST /login`
+  with an existing Linux user (not root) when `PAM=yes`. `PAM=no` uses
+  the email cubby and does not ask for a Unix password. With no provider,
+  `/login` is that Unix password and there is no map row
 - `ALLOWED_EMAILS` empty: whoever the Google client admits. If any
   address is set, an unlisted or unverified account is rejected at
-  login and does not reach `/link`
+  auth and does not reach the Unix password
 - Changing or disabling the Unix account does not drop the map;
   `bootstash unlink` does
 - Extra DNS names are a second origin. HTTPS cookies are `__Host-`
@@ -207,8 +218,3 @@ sends the new URI.
 
 Cert layout, hook-managed `certs/`, and your own PEMs:
 [`QUICKSTART.md`](QUICKSTART.md) (TLS and Let’s Encrypt).
-
-## License
-
-Copyright (C) 2026 Nye Liu. GPL-3.0-or-later. See
-[LICENSE](LICENSE).

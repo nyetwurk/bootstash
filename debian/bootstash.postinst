@@ -34,8 +34,9 @@ can_start() {
 }
 
 # After certs: try-restart if already up (new binary). Start only when
-# check-config would pass, so first install without OIDC stays down
-# instead of a failed unit. Never fail configure. Never enable.
+# check-config would pass. PAM=yes with no identity provider can start
+# (Unix password login). PAM=no or IDP=google without a client id stays
+# down. Never fail configure. Never enable.
 maybe_start() {
 	[ -z "${DPKG_ROOT:-}" ] || return 0
 	[ -d /run/systemd/system ] || return 0

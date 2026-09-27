@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,19 +17,38 @@ import (
 	"github.com/nyet/bootstash/internal/config"
 	"github.com/nyet/bootstash/internal/osutil"
 	"github.com/nyet/bootstash/internal/pamauth"
+	"github.com/nyet/bootstash/internal/store"
 	"golang.org/x/sys/unix"
 )
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
+		s.handleLoginGet(w, r)
+	case http.MethodPost:
+		s.handleLoginPost(w, r)
+	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleLoginGet(w http.ResponseWriter, r *http.Request) {
+	sess := s.session(r)
+	if sess != nil && s.sessionHasCubby(sess) {
+		http.Redirect(w, r, "/home/", http.StatusFound)
 		return
 	}
-	if r.URL.Query().Get("provider") == "" {
-		s.render(w, "login", pageData{Title: "Sign in"})
+	name := r.URL.Query().Get("provider")
+	if name == "" || s.passwordLogin(sess) {
+		if name != "" {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		s.render(w, "login", s.loginPage(sess))
 		return
 	}
-	if r.URL.Query().Get("provider") != "google" {
+	idp, ok := s.activeIDP(name)
+	if !ok {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
@@ -47,20 +67,77 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.loginFail(w, http.StatusInternalServerError, "Something went wrong.")
 		return
 	}
-	u, verifier, err := s.idp.AuthCodeURL(r.Context(), state, nonce, s.redirectURI())
+	u, verifier, err := idp.AuthCodeURL(r.Context(), state, nonce, s.redirectURI())
 	if err != nil {
-		log.Printf("oidc auth url: %v", err)
-		s.loginFail(w, http.StatusBadGateway, "Google is unavailable. Try again.")
+		log.Printf("oidc auth url provider=%s: %v", name, err)
+		s.loginFail(w, http.StatusBadGateway, "Sign-in is unavailable. Try again.")
 		return
 	}
-	if err := s.putOauthTx(txID, nonce, verifier, time.Now().Add(oauthTTL)); err != nil {
+	if err := s.putOauthTx(txID, name, nonce, verifier, time.Now().Add(oauthTTL)); err != nil {
 		log.Printf("login oauth tx full from %s", r.RemoteAddr)
 		s.loginFail(w, http.StatusServiceUnavailable, "Too many sign-in attempts. Try again.")
 		return
 	}
 	s.setCookie(w, s.oauthCookieName(), txID, int(oauthTTL.Seconds()))
-	log.Printf("login start google from %s", r.RemoteAddr)
+	log.Printf("login start provider=%s from %s", name, r.RemoteAddr)
 	http.Redirect(w, r, u, http.StatusFound)
+}
+
+func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
+	sess := s.session(r)
+	if !s.passwordLogin(sess) {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireCSRF(w, r) {
+		return
+	}
+	_ = r.ParseForm()
+	user := strings.TrimSpace(r.FormValue("username"))
+	acct, err := s.acceptLocalUser(user, r.FormValue("password"))
+	if err != nil {
+		sub := ""
+		if sess != nil {
+			sub = sess.Sub
+		}
+		log.Printf("login denied pam=%s sub=%s from %s", user, sub, r.RemoteAddr)
+		if !errors.Is(err, pamauth.ErrDenied) && !errors.Is(err, errUnknownUser) {
+			s.loginFail(w, http.StatusInternalServerError, "Something went wrong.")
+			return
+		}
+		data := s.loginPage(sess)
+		data.Error = "username or password not accepted"
+		if errors.Is(err, errUnknownUser) {
+			data.Error = "unknown local user"
+		}
+		data.Hint = user
+		s.render(w, "login", data)
+		return
+	}
+	if err := s.ensureUserDir(acct.Name); err != nil {
+		log.Printf("user dir: %v", err)
+	}
+	var out *store.Session
+	if sess == nil {
+		created, err := s.store.CreatePAMSession(acct.Name, sessionTTL)
+		if err != nil {
+			log.Printf("login session pam=%s: %v", acct.Name, err)
+			s.loginFail(w, http.StatusInternalServerError, "Something went wrong.")
+			return
+		}
+		out = created
+		log.Printf("login pam=%s from %s", acct.Name, r.RemoteAddr)
+	} else {
+		if err := s.store.SaveLinkedSession(sess, acct.Name); err != nil {
+			log.Printf("login store pam=%s sub=%s: %v", acct.Name, sess.Sub, err)
+			s.replyError(w, r, http.StatusInternalServerError, "Something went wrong.")
+			return
+		}
+		out = sess
+		log.Printf("login pam=%s sub=%s email=%s from %s", acct.Name, sess.Sub, sess.Email, r.RemoteAddr)
+	}
+	s.setSessionCookie(w, out)
+	http.Redirect(w, r, s.afterLogin(r, true), http.StatusFound)
 }
 
 func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
@@ -85,14 +162,20 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		s.loginFail(w, http.StatusBadRequest, "Sign-in expired. Try again.")
 		return
 	}
-	got, verifier, err := s.takeOauthTx(c.Value)
+	got, provider, verifier, err := s.takeOauthTx(c.Value)
 	if err != nil || got != nonce {
 		log.Printf("login oauth tx mismatch from %s", r.RemoteAddr)
 		s.loginFail(w, http.StatusBadRequest, "Sign-in expired. Try again.")
 		return
 	}
 	s.setCookie(w, s.oauthCookieName(), "", -1)
-	id, err := s.idp.Exchange(r.Context(), r.URL.Query().Get("code"), nonce, s.redirectURI(), verifier)
+	idp, ok := s.activeIDP(provider)
+	if !ok {
+		log.Printf("login unknown provider %q from %s", provider, r.RemoteAddr)
+		s.loginFail(w, http.StatusBadRequest, "Sign-in expired. Try again.")
+		return
+	}
+	id, err := idp.Exchange(r.Context(), r.URL.Query().Get("code"), nonce, s.redirectURI(), verifier)
 	if err != nil {
 		log.Printf("oidc exchange: %v", err)
 		s.loginFail(w, http.StatusBadRequest, "Sign-in failed. Try again.")
@@ -128,56 +211,67 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, s.afterLogin(r, true), http.StatusFound)
 }
 
-func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
-	sess := s.session(r)
-	if sess == nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
-		return
+var errUnknownUser = errors.New("unknown local user")
+
+// acceptLocalUser checks the PAM helper and resolves a linkable Unix account.
+// UID 0 is ErrDenied. A missing passwd entry is errUnknownUser.
+func (s *Server) acceptLocalUser(user, pass string) (*pamauth.Account, error) {
+	if s.pam == nil {
+		return nil, errors.New("pam authenticator is not configured")
 	}
-	switch r.Method {
-	case http.MethodGet:
-		s.render(w, "link", sessionPage(sess, pageData{Title: "Link account", Hint: hintUsername(sess.Email)}))
-	case http.MethodPost:
-		if !s.requireCSRF(w, r) {
-			return
-		}
-		_ = r.ParseForm()
-		user := strings.TrimSpace(r.FormValue("username"))
-		pass := r.FormValue("password")
-		if s.pam == nil {
-			s.replyError(w, r, http.StatusInternalServerError, "Something went wrong.")
-			return
-		}
-		if err := s.pam.Authenticate(user, pass); err != nil {
-			log.Printf("link denied pam=%s sub=%s from %s", user, sess.Sub, r.RemoteAddr)
-			s.render(w, "link", sessionPage(sess, pageData{Title: "Link account", Error: "username or password not accepted", Hint: user}))
-			return
-		}
-		acct, err := pamauth.Lookup(user)
-		if err != nil {
-			log.Printf("link unknown user=%s sub=%s from %s", user, sess.Sub, r.RemoteAddr)
-			s.render(w, "link", sessionPage(sess, pageData{Title: "Link account", Error: "unknown local user", Hint: user}))
-			return
-		}
-		if !pamauth.Linkable(acct) {
-			log.Printf("link denied pam=%s sub=%s from %s (uid 0)", user, sess.Sub, r.RemoteAddr)
-			s.render(w, "link", sessionPage(sess, pageData{Title: "Link account", Error: "username or password not accepted", Hint: user}))
-			return
-		}
-		if err := s.ensureUserDir(user); err != nil {
-			log.Printf("user dir: %v", err)
-		}
-		if err := s.store.SaveLinkedSession(sess, user); err != nil {
-			log.Printf("link store pam=%s sub=%s: %v", user, sess.Sub, err)
-			s.replyError(w, r, http.StatusInternalServerError, "Something went wrong.")
-			return
-		}
-		s.setSessionCookie(w, sess)
-		log.Printf("link ok pam=%s sub=%s email=%s from %s", user, sess.Sub, sess.Email, r.RemoteAddr)
-		http.Redirect(w, r, s.afterLogin(r, true), http.StatusFound)
-	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if err := s.pam.Authenticate(user, pass); err != nil {
+		return nil, pamauth.ErrDenied
 	}
+	acct, err := pamauth.Lookup(user)
+	if err != nil {
+		return nil, errUnknownUser
+	}
+	if !pamauth.Linkable(acct) {
+		return nil, pamauth.ErrDenied
+	}
+	return acct, nil
+}
+
+// passwordLogin is the Unix password form: PAM-only when there is no
+// session, or the password after OIDC auth when the session has no cubby.
+func (s *Server) passwordLogin(sess *store.Session) bool {
+	if sess != nil && s.sessionHasCubby(sess) {
+		return false
+	}
+	if s.config().PAMLogin() {
+		return true
+	}
+	return sess != nil && s.config().LinkPAM()
+}
+
+func (s *Server) loginPage(sess *store.Session) pageData {
+	data := pageData{Title: "Sign in"}
+	if sess != nil {
+		data = sessionPage(sess, data)
+	}
+	if s.passwordLogin(sess) {
+		data.PAMLogin = true
+		data.Title = "Log in"
+		if data.Hint == "" && sess != nil {
+			data.Hint = hintUsername(sess.Email)
+		}
+		return data
+	}
+	for _, name := range s.config().Providers() {
+		id, ok := s.registered(name)
+		if !ok {
+			continue
+		}
+		label := id.Label
+		if label == "" {
+			label = name
+		}
+		data.Providers = append(data.Providers, loginChoice{
+			Label: label,
+			Href:  "/login?provider=" + url.QueryEscape(name),
+		})
+	}
+	return data
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -199,7 +293,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 // fixCubbies reapplies 2770 user:bootstash on existing cubbies and
-// linked PAM names. Same caps as /link (CAP_CHOWN / CAP_FSETID /
+// linked PAM names. Same caps as login (CAP_CHOWN / CAP_FSETID /
 // CAP_FOWNER); not limited to link time.
 func (s *Server) fixCubbies() {
 	names := make(map[string]struct{})
@@ -229,7 +323,7 @@ func (s *Server) fixCubbies() {
 			log.Printf("cubby %s: %v", n, err)
 			continue
 		}
-		s.fixCubbyTree(filepath.Join(s.usersDir(), n))
+		s.prepareExistingCubby(s.usersDir(), n, "")
 	}
 	s.fixEmailCubbies()
 }
@@ -306,17 +400,6 @@ func openDir(path string) (int, error) {
 	return unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 }
 
-// fixCubbyTree walks a cubby (start/SIGHUP). Per-request reads use
-// prepareCubbyRead instead.
-func (s *Server) fixCubbyTree(root string) {
-	users := s.usersDir()
-	rel, err := filepath.Rel(users, filepath.Clean(root))
-	if err != nil || rel == "." || !filepath.IsLocal(rel) {
-		return
-	}
-	s.fixExistingCubby(users, rel)
-}
-
 func (s *Server) fixCubbyDirChildren(dirfd int, path, users string, gid int) {
 	dup, err := unix.FcntlInt(uintptr(dirfd), unix.F_DUPFD_CLOEXEC, 0)
 	if err != nil {
@@ -348,11 +431,9 @@ func (s *Server) fixCubbyDirChildren(dirfd int, path, users string, gid int) {
 		if err != nil {
 			continue
 		}
+		s.fixCubbyFD(fd, child, users, gid)
 		if e.IsDir() {
-			s.fixCubbyFD(fd, child, users, gid)
 			s.fixCubbyDirChildren(fd, child, users, gid)
-		} else {
-			s.fixCubbyFD(fd, child, users, gid)
 		}
 		unix.Close(fd)
 	}

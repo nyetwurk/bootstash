@@ -87,6 +87,30 @@ func badName(s string) bool {
 	return s == "." || s == ".." || strings.ContainsAny(s, "/\\:\x00")
 }
 
+func parseIDPNames(vals []string) ([]string, error) {
+	var out []string
+	seen := map[string]struct{}{}
+	for _, raw := range vals {
+		for _, p := range strings.FieldsFunc(raw, func(r rune) bool {
+			return r == ',' || unicode.IsSpace(r)
+		}) {
+			name := strings.ToLower(p)
+			if name == "" {
+				continue
+			}
+			if name != ProviderGoogle {
+				return nil, fmt.Errorf("IDP: unknown provider %q", p)
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			out = append(out, name)
+		}
+	}
+	return out, nil
+}
+
 func parseAdminUsers(s string) ([]string, error) {
 	var out []string
 	for _, p := range strings.FieldsFunc(s, func(r rune) bool {

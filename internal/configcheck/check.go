@@ -48,21 +48,34 @@ func Summary(cfg *config.Config) string {
 	if len(cfg.AdminUsers) > 0 {
 		s += " admins=" + strings.Join(cfg.AdminUsers, ",")
 	}
-	if cfg != nil && !cfg.RequirePAMLink {
-		s += " pam-link=no"
+	if !cfg.PAM {
+		s += " pam=no"
 	}
-	if cfg != nil && len(cfg.AllowedEmails) > 0 {
+	names := cfg.Providers()
+	if len(names) == 0 {
+		s += " idp=none"
+	} else {
+		s += " idp=" + strings.Join(names, ",")
+	}
+	if len(cfg.AllowedEmails) > 0 {
 		s += fmt.Sprintf(" emails=%d", len(cfg.AllowedEmails))
 	}
 	return s
 }
 
 // Notice is a non-fatal operator warning. Empty when there is nothing
-// to say. REQUIRE_PAM_LINK=0 with an empty address list gives every
-// verified Google account its own cubby.
+// to say. PAM=no with an empty address list gives every verified
+// account from the identity provider its own cubby. ALLOWED_EMAILS
+// with no provider does nothing (no OIDC client).
 func Notice(cfg *config.Config) string {
-	if cfg == nil || cfg.RequirePAMLink || len(cfg.AllowedEmails) > 0 {
+	if cfg == nil {
 		return ""
 	}
-	return "REQUIRE_PAM_LINK=0 and ALLOWED_EMAILS is empty: any verified Google account gets a cubby"
+	if len(cfg.AllowedEmails) > 0 && len(cfg.Providers()) == 0 {
+		return "ALLOWED_EMAILS is set but no identity provider is configured"
+	}
+	if cfg.PAM || len(cfg.AllowedEmails) > 0 {
+		return ""
+	}
+	return "PAM=no and ALLOWED_EMAILS is empty: any verified account gets a cubby"
 }

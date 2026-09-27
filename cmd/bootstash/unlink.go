@@ -9,16 +9,12 @@ import (
 	"log"
 	"os"
 
-	"github.com/nyet/bootstash/internal/config"
 	"github.com/nyet/bootstash/internal/pamauth"
-	"github.com/nyet/bootstash/internal/store"
 )
 
 func runUnlink(args []string) int {
 	fs := flag.NewFlagSet("unlink", flag.ExitOnError)
-	defaults := fs.String("defaults", config.DefaultDistPath, "dist defaults (read DATA)")
-	cfgFile := fs.String("config", config.DefaultConfigPath, "operator config (read DATA)")
-	secretsFile := fs.String("secrets", config.DefaultSecretsPath, "OIDC client secrets")
+	defaults, cfgFile, secretsFile := stateFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -32,12 +28,7 @@ func runUnlink(args []string) int {
 		return 2
 	}
 
-	cfg, err := config.Load(*defaults, *cfgFile, *secretsFile)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	st, err := store.Open(cfg.Data)
+	st, err := openState(*defaults, *cfgFile, *secretsFile)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

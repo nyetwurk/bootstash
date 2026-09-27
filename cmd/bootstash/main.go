@@ -4,6 +4,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/nyet/bootstash/internal/config"
 	"github.com/nyet/bootstash/internal/configcheck"
+	"github.com/nyet/bootstash/internal/store"
 	"github.com/nyet/bootstash/internal/version"
 )
 
@@ -90,6 +92,21 @@ func runCheck(args []string) int {
 		fmt.Fprintln(os.Stderr, "bootstash:", n)
 	}
 	return 0
+}
+
+func stateFlags(fs *flag.FlagSet) (defaults, cfgFile, secrets *string) {
+	defaults = fs.String("defaults", config.DefaultDistPath, "dist defaults (read DATA)")
+	cfgFile = fs.String("config", config.DefaultConfigPath, "operator config (read DATA)")
+	secrets = fs.String("secrets", config.DefaultSecretsPath, "OIDC client secrets")
+	return
+}
+
+func openState(defaults, cfgFile, secrets string) (*store.Store, error) {
+	cfg, err := config.Load(defaults, cfgFile, secrets)
+	if err != nil {
+		return nil, err
+	}
+	return store.Open(cfg.Data)
 }
 
 func usage() {

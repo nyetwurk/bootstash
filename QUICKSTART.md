@@ -47,8 +47,8 @@ file; do not paste them into `/etc/default/bootstash`.
 ## Config
 
 `/etc/default/bootstash` is created on install with commented `DATA`,
-`LISTEN`, `PUBLIC_URL`, `ADMIN_USERS`, `ALLOWED_EMAILS`, and
-`REQUIRE_PAM_LINK`. Add only what you need to
+`LISTEN`, `PUBLIC_URL`, `ADMIN_USERS`, `ALLOWED_EMAILS`, `PAM`, and
+`IDP`. Add only what you need to
 change. It is not a conffile: `dpkg` will not ask you to merge a new
 packaged copy over your edits. Packaged operator keys stay in
 `/usr/lib/bootstash/default-dist`. OIDC client id/secret and
@@ -159,15 +159,15 @@ hook does that when the service is active).
 
 ## Users and files
 
-To see who is linked: `sudo bootstash links` (PAM name, issuer, `sub`).
-To drop a user's Google->Linux map (they must link again; the cubby
-stays): `sudo bootstash unlink alice`. Changing or disabling the Unix
-account does not drop the map.
+To list the map: `sudo bootstash links` (PAM name, issuer, `sub`).
+To drop a user's Google-to-Linux map (they must log in again; the
+cubby stays): `sudo bootstash unlink alice`. Changing or disabling
+the Unix account does not drop the map.
 
-After link, that Unix user can put files into the cubby (not root).
+After that login, that Unix user can put files into the cubby (not root).
 Every name on the command is a source. `-t` is the only directory
 inside the cubby.
-With `REQUIRE_PAM_LINK=0`, `put` writes one allowlisted address’s
+With `PAM=no`, `put` writes one allowlisted address’s
 cubby instead (`-email` when more than one address is listed).
 Do not add that user to group `bootstash`. Files stay owned by
 that Unix user:
@@ -210,7 +210,8 @@ Configure does not enable the unit.
   (copy, or dest PEM removal when `TLS=no`)
 - If it is down, it starts only when `bootstash check-config` would
   pass (same as `bootstashd -t`)
-- First install without a Google client id stays down
+- `PAM=no` or `IDP=google` without a Google client id stays down.
+  `PAM=yes` with no provider can start (Unix password login)
 - Configure prints what is still needed: daemon not started or not
   enabled on boot, no Google client id, loopback LISTEN, no copied
   certs unless `TLS=no`

@@ -1,5 +1,3 @@
-# Copyright (C) 2026 Nye Liu
-# SPDX-License-Identifier: GPL-3.0-or-later
 # Example overrides. Do not copy this file over /etc/default/bootstash.
 # Google client JSON: bootstash provision-google
 # (installs /etc/bootstash/oidc-google.json, not this file).

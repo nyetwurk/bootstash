@@ -268,7 +268,7 @@ so a cubby owner can traverse in).
 .I users/
 is
 .B 0711
-so a linked Unix user can
+so the cubby owner can
 .B bootstash put
 or copy into
 .IR users/<name>/
@@ -283,8 +283,8 @@ is
 The caller is not a member of group
 .BR bootstash .
 With
-.B REQUIRE_PAM_LINK=0
-an unlinked session uses
+.B PAM=no
+a provider session uses
 .IR home/<id>/ ,
 where
 .I id
@@ -294,7 +294,7 @@ email. The address is not a directory name.
 creates that directory as the caller
 .RB ( 2770 ).
 The daemon does not create it and does not change its owner.
-A linked session still uses
+A session that already has a Unix user still uses
 .IR users/<name>/ .
 Start, SIGHUP, and
 .B /home
@@ -306,7 +306,14 @@ See
 .BR bootstashd (8).
 .TP
 .B OIDC_GOOGLE_CLIENT_ID / OIDC_GOOGLE_CLIENT_SECRET
-Google web OAuth client. Client ID is required to start.
+Google web OAuth client. Required when Google is an active provider
+.RB ( IDP=google ,
+or
+.B IDP
+left unset and this id is present).
+Not required when
+.B PAM=yes
+and no provider is configured.
 Do not put these in
 .I /etc/default/bootstash
 or
@@ -363,46 +370,63 @@ replace the packaged list, and every line counts. Addresses are
 trimmed and lowercased. Gmail dots and plus-tags are not folded.
 Empty or unset: whoever the Google client admits. If any address is
 set, only a verified listed address may finish sign-in. Others get
-a login error and do not reach
-.BR /link .
+a login error and do not reach the Unix password.
 The first success for an address stores
 .B (issuer, sub)
 in
 .IR $DATA/state/subjects.json .
 A later sign-in for that address must be the same subject.
-SIGHUP re-reads the list. An unlinked session whose address was
+SIGHUP re-reads the list. A session with no Unix user whose address was
 removed is cut off
 .BR /home/ .
 A session that already has a Unix user keeps
 .IR users/<name>/ .
 Secrets cannot set this key.
+check-config warns when this list is set and no identity provider
+is configured.
 .TP
-.B REQUIRE_PAM_LINK
-.B 1
-(default) requires
-.B POST /link
-before
+.B PAM
+.B yes
+(default) maps a session onto
+.IR users/<unix-name>/ .
+With an identity provider,
+.B POST /login
+after that auth is required before
 .BR /home/ .
-.B 0
-lets an unlinked verified-email session use
+With no provider,
+.B /login
+is the Unix username and password and there is no map row.
+.B no
+uses
 .IR home/<id>/
-with no Unix password.
-.B POST /link
-still works, and a linked session still uses
-.IR users/<name>/ .
+for a provider session and does not ask for a Unix password.
+At least one identity provider is required.
 Packaged default is
-.BR 1 .
+.BR yes .
 With
-.B 0
+.B no
 and an empty
 .BR ALLOWED_EMAILS ,
-check-config warns: any verified Google account gets a cubby.
+check-config warns: any verified account gets a cubby.
+.TP
+.B IDP
+Repeatable identity-provider name. If the operator file mentions the
+key, those lines replace automatic detection, and every line counts.
+Names may be comma- or space-separated on a line.
+.B google
+is the only name. It requires the Google client id.
+Left unset: Google is on when that id is set, and off when it is not.
+An empty
+.B IDP
+list means no providers, even if
+.I oidc-google.json
+is still installed.
+Secrets cannot set this key.
 .TP
 .B ADMIN_USERS
 Comma- or space-separated PAM usernames treated as operators (the
 admin seam). Default empty: nobody. SIGHUP re-reads the list.
-Currently grants no extra HTTP powers. Listing or dropping a PAM
-link is
+Currently grants no extra HTTP powers. Listing or dropping a map is
 .B bootstash links
 /
 .B bootstash unlink

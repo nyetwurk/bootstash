@@ -22,6 +22,8 @@ const (
 	// DefaultSecretsPath is the Google OAuth client JSON (the file
 	// the console downloads). Written by bootstash provision-google.
 	DefaultSecretsPath = "/etc/bootstash/oidc-google.json"
+	// ProviderGoogle is the only identity provider implemented.
+	ProviderGoogle = "google"
 )
 
 // Config is the merged runtime configuration.
@@ -47,13 +49,20 @@ type Config struct {
 	// AllowedEmails is the verified-address allowlist. Empty: whoever
 	// the OIDC client admits. Each address is one cubby.
 	AllowedEmails []string
-	// RequirePAMLink is REQUIRE_PAM_LINK. True (packaged default):
-	// /home needs a PAM link. False: an unlinked session uses the
-	// email cubby.
-	RequirePAMLink bool
-	DefaultsPath   string
-	ConfigPath     string
-	SecretsPath    string
+	// PAM maps a session onto users/<unix name>/. Packaged default
+	// is yes. No: email cubbies, and at least one identity provider
+	// is required.
+	PAM bool
+	// IDPs is the identity-provider list when IDPSet is true.
+	// Empty with IDPSet means no providers, even if a Google client
+	// id is present.
+	IDPs []string
+	// IDPSet is true when an IDP= line was present. False means
+	// auto: google when GoogleClientID is set, otherwise none.
+	IDPSet       bool
+	DefaultsPath string
+	ConfigPath   string
+	SecretsPath  string
 }
 
 var builtin = mustParseBuiltin()
@@ -119,6 +128,9 @@ func load(defaultsPath, configPath, secretsPath string) (*Config, error) {
 		if err != nil {
 			return nil, err
 		}
+		// Operator keys. A KEY=value secrets file cannot flip them.
+		delete(sec, "PAM")
+		delete(sec, "IDP")
 		mergeScalars(merged, sec)
 	}
 
@@ -136,13 +148,48 @@ func load(defaultsPath, configPath, secretsPath string) (*Config, error) {
 	return cfg, nil
 }
 
+// Providers is the resolved identity-provider list. When IDP was
+// not set, Google is included only if a client id is configured.
+func (c *Config) Providers() []string {
+	if c == nil {
+		return nil
+	}
+	if c.IDPSet {
+		return append([]string(nil), c.IDPs...)
+	}
+	if strings.TrimSpace(c.GoogleClientID) != "" {
+		return []string{ProviderGoogle}
+	}
+	return nil
+}
+
+// LinkPAM reports whether an identity-provider auth must still log in
+// with a Unix password before it can open users/<name>/.
+func (c *Config) LinkPAM() bool {
+	return c != nil && c.PAM && len(c.Providers()) > 0
+}
+
+// PAMLogin reports whether /login is a Unix username and password.
+// That is PAM cubbies with no identity provider configured.
+func (c *Config) PAMLogin() bool {
+	return c != nil && c.PAM && len(c.Providers()) == 0
+}
+
 // Ready reports whether the operator has supplied keys required to serve.
 func (c *Config) Ready() error {
 	if strings.TrimSpace(c.PublicURL) == "" {
 		return fmt.Errorf("PUBLIC_URL is not set (write it in %s, or set CERT_NAME / install certs)", c.ConfigPath)
 	}
-	if strings.TrimSpace(c.GoogleClientID) == "" {
-		return fmt.Errorf("OIDC_GOOGLE_CLIENT_ID is not set (install the Google client JSON in %s or run bootstash provision-google)", c.SecretsPath)
+	for _, name := range c.Providers() {
+		if name != ProviderGoogle {
+			return fmt.Errorf("IDP: unknown provider %q", name)
+		}
+		if strings.TrimSpace(c.GoogleClientID) == "" {
+			return fmt.Errorf("OIDC_GOOGLE_CLIENT_ID is not set (install the Google client JSON in %s or run bootstash provision-google)", c.SecretsPath)
+		}
+	}
+	if !c.PAM && len(c.Providers()) == 0 {
+		return fmt.Errorf("PAM=no requires an identity provider (set IDP=google and install the Google client JSON in %s, or run bootstash provision-google)", c.SecretsPath)
 	}
 	if !c.DisableTLS && (c.TLSCert == "") != (c.TLSKey == "") {
 		return fmt.Errorf("TLS_CERT and TLS_KEY must be set together")
@@ -213,13 +260,21 @@ func (c *Config) apply(m map[string][]string) error {
 		return err
 	}
 	c.AllowedEmails = emails
-	c.RequirePAMLink = true
-	if s := first(m, "REQUIRE_PAM_LINK"); s != "" {
+	c.PAM = true
+	if s := first(m, "PAM"); s != "" {
 		on, err := parseBool(s)
 		if err != nil {
-			return fmt.Errorf("REQUIRE_PAM_LINK: %w", err)
+			return fmt.Errorf("PAM: %w", err)
 		}
-		c.RequirePAMLink = on
+		c.PAM = on
+	}
+	if vals, ok := m["IDP"]; ok {
+		names, err := parseIDPNames(vals)
+		if err != nil {
+			return err
+		}
+		c.IDPSet = true
+		c.IDPs = names
 	}
 	for _, p := range []struct {
 		ok   bool
@@ -277,12 +332,15 @@ func mergeInto(dst, src map[string][]string) {
 	if vals, ok := src["ALLOWED_EMAILS"]; ok {
 		dst["ALLOWED_EMAILS"] = append([]string(nil), vals...)
 	}
+	if vals, ok := src["IDP"]; ok {
+		dst["IDP"] = append([]string(nil), vals...)
+	}
 	mergeScalars(dst, src)
 }
 
 func mergeScalars(dst, src map[string][]string) {
 	for k, vals := range src {
-		if k == "LISTEN" || k == "ALLOWED_EMAILS" || len(vals) == 0 {
+		if k == "LISTEN" || k == "ALLOWED_EMAILS" || k == "IDP" || len(vals) == 0 {
 			continue
 		}
 		dst[k] = []string{vals[len(vals)-1]}

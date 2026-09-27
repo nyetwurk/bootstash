@@ -114,6 +114,12 @@ main {
 }
 .door .brand { font-size: 1.6rem; }
 .door .err { margin: 0; max-width: 22rem; }
+.door form.stack {
+  width: min(22rem, 100%);
+  text-align: start;
+}
+.door form.stack .btn { width: 100%; }
+main .door { min-height: 0; }
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);

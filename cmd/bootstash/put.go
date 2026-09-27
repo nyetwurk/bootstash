@@ -66,7 +66,7 @@ func putWith(u putUser, w io.Writer, args []string) int {
 	defaults := flags.String("defaults", config.DefaultDistPath, "dist defaults (read DATA)")
 	cfgFile := flags.String("config", config.DefaultConfigPath, "operator config (read DATA)")
 	destFlag := flags.String("t", "", "destination directory in the cubby")
-	emailFlag := flags.String("email", "", "verified address cubby (REQUIRE_PAM_LINK=0)")
+	emailFlag := flags.String("email", "", "verified address cubby (PAM=no)")
 	flags.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: bootstash put [options] [-t DIR] SRC [SRC...]")
 	}
@@ -148,9 +148,9 @@ func cubbyDir(cfg *config.Config, u putUser, emailFlag string) (string, error) {
 	if cfg == nil {
 		return "", errors.New("no config")
 	}
-	if cfg.RequirePAMLink {
+	if cfg.PAM {
 		if emailFlag != "" {
-			return "", errors.New("-email requires REQUIRE_PAM_LINK=0")
+			return "", errors.New("-email requires PAM=no")
 		}
 		return pamCubby(cfg.Data, u)
 	}

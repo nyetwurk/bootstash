@@ -45,8 +45,11 @@ func TestLoadMissingConfigKeepsDefaultLISTEN(t *testing.T) {
 	if len(cfg.Binds) != 1 || cfg.Binds[0] != "127.0.0.1:8080" {
 		t.Fatalf("binds %#v", cfg.Binds)
 	}
-	if err := cfg.Ready(); err == nil {
-		t.Fatal("expected Ready error without OIDC_GOOGLE_CLIENT_ID")
+	if !cfg.PAM || len(cfg.Providers()) != 0 {
+		t.Fatalf("expected pam-only, pam=%v providers=%#v", cfg.PAM, cfg.Providers())
+	}
+	if err := cfg.Ready(); err != nil && !strings.Contains(err.Error(), "PUBLIC_URL") {
+		t.Fatal(err)
 	}
 }
 
@@ -505,8 +508,8 @@ func TestBuiltinDefaultDist(t *testing.T) {
 	if cfg.PublicURL != "" || cfg.CertName != "" || cfg.TLSCert != "" || cfg.GoogleClientID != "" {
 		t.Fatalf("empty %+v", cfg)
 	}
-	if !cfg.RequirePAMLink || len(cfg.AllowedEmails) != 0 {
-		t.Fatalf("pam link %+v emails %#v", cfg.RequirePAMLink, cfg.AllowedEmails)
+	if !cfg.PAM || cfg.IDPSet || len(cfg.Providers()) != 0 || len(cfg.AllowedEmails) != 0 {
+		t.Fatalf("pam %+v idpset %v providers %#v emails %#v", cfg.PAM, cfg.IDPSet, cfg.Providers(), cfg.AllowedEmails)
 	}
 
 	for _, key := range []string{"OIDC_GOOGLE_CLIENT_ID", "OIDC_GOOGLE_CLIENT_SECRET", "OIDC_CRYPTO"} {
@@ -519,7 +522,7 @@ func TestBuiltinDefaultDist(t *testing.T) {
 func TestAllowedEmailsRepeatableAndCubbyID(t *testing.T) {
 	dir := t.TempDir()
 	op := filepath.Join(dir, "op")
-	body := "ALLOWED_EMAILS=Alice@Gmail.com\nALLOWED_EMAILS=bob@gmail.com, alice@gmail.com\nREQUIRE_PAM_LINK=0\n"
+	body := "ALLOWED_EMAILS=Alice@Gmail.com\nALLOWED_EMAILS=bob@gmail.com, alice@gmail.com\nPAM=no\n"
 	if err := os.WriteFile(op, []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -527,8 +530,8 @@ func TestAllowedEmailsRepeatableAndCubbyID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.RequirePAMLink {
-		t.Fatal("REQUIRE_PAM_LINK=0")
+	if cfg.PAM {
+		t.Fatal("PAM=no")
 	}
 	if len(cfg.AllowedEmails) != 2 || cfg.AllowedEmails[0] != "alice@gmail.com" || cfg.AllowedEmails[1] != "bob@gmail.com" {
 		t.Fatalf("%#v", cfg.AllowedEmails)
@@ -574,5 +577,106 @@ func TestSecretsCannotSetAllowedEmails(t *testing.T) {
 	}
 	if len(cfg.AllowedEmails) != 1 || cfg.AllowedEmails[0] != "alice@gmail.com" {
 		t.Fatalf("%#v", cfg.AllowedEmails)
+	}
+}
+
+func TestAuthModes(t *testing.T) {
+	dir := t.TempDir()
+	def := filepath.Join(dir, "missing-dist")
+	op := filepath.Join(dir, "op")
+	sec := filepath.Join(dir, "sec")
+	base := "PUBLIC_URL=https://stash.test\nLISTEN=127.0.0.1:8080\n"
+
+	if err := os.WriteFile(op, []byte(base+"PAM=no\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(def, op, sec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Ready(); err == nil {
+		t.Fatal("PAM=no without a provider should fail Ready")
+	}
+
+	if err := os.WriteFile(op, []byte(base+"IDP=google\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(def, op, sec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Ready(); err == nil {
+		t.Fatal("IDP=google without a client id should fail Ready")
+	}
+
+	if err := os.WriteFile(sec, []byte("OIDC_GOOGLE_CLIENT_ID=cid\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(op, []byte(base+"PAM=no\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(def, op, sec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Ready(); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.PAM || len(cfg.Providers()) != 1 || cfg.Providers()[0] != ProviderGoogle {
+		t.Fatalf("oidc-only %+v %#v", cfg.PAM, cfg.Providers())
+	}
+
+	if err := os.WriteFile(op, []byte(base+"IDP=\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(def, op, sec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Ready(); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.PAMLogin() || len(cfg.Providers()) != 0 {
+		t.Fatalf("explicit empty IDP should be pam login, providers %#v", cfg.Providers())
+	}
+
+	if err := os.WriteFile(op, []byte(base+"PAM=yes\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(def, op, sec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Ready(); err != nil || !cfg.LinkPAM() {
+		t.Fatalf("auto google link: %v %+v", err, cfg.Providers())
+	}
+
+	if err := os.WriteFile(op, []byte(base+"IDP=github\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(def, op, sec); err == nil {
+		t.Fatal("expected unknown IDP")
+	}
+}
+
+func TestSecretsCannotSetPAM(t *testing.T) {
+	dir := t.TempDir()
+	op := filepath.Join(dir, "op")
+	if err := os.WriteFile(op, []byte("PAM=yes\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sec := filepath.Join(dir, "sec")
+	if err := os.WriteFile(sec, []byte("PAM=no\nIDP=google\nOIDC_GOOGLE_CLIENT_ID=cid\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(filepath.Join(dir, "missing-dist"), op, sec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.PAM || cfg.IDPSet {
+		t.Fatalf("secrets changed auth pam=%v idpset=%v", cfg.PAM, cfg.IDPSet)
+	}
+	if len(cfg.Providers()) != 1 || cfg.Providers()[0] != ProviderGoogle {
+		t.Fatalf("providers %#v", cfg.Providers())
 	}
 }

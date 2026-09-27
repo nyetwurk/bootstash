@@ -106,26 +106,43 @@ func (s *Store) EnsureCryptoKey(existing []byte) ([]byte, error) {
 
 // CreateSession stores a new session and returns it.
 func (s *Store) CreateSession(iss, sub, email string, ttl time.Duration) (*Session, error) {
+	sess := &Session{Iss: iss, Sub: sub, Email: email}
+	return s.putSession(sess, ttl, func() error {
+		pam, ok, err := s.lookupLinkLocked(iss, sub)
+		if err != nil {
+			return err
+		}
+		if ok {
+			sess.PAMUser = pam
+		}
+		return nil
+	})
+}
+
+// CreatePAMSession stores a session for a Unix user. Issuer and subject
+// stay empty, and the link table is not consulted.
+func (s *Store) CreatePAMSession(pamUser string, ttl time.Duration) (*Session, error) {
+	if pamUser == "" {
+		return nil, os.ErrInvalid
+	}
+	return s.putSession(&Session{PAMUser: pamUser}, ttl, nil)
+}
+
+func (s *Store) putSession(sess *Session, ttl time.Duration, prep func() error) (*Session, error) {
 	id, err := randomID()
 	if err != nil {
 		return nil, err
 	}
-	sess := &Session{
-		ID:      id,
-		Iss:     iss,
-		Sub:     sub,
-		Email:   email,
-		Expires: time.Now().Add(ttl),
-	}
-	err = s.withLock(func() error {
-		if pam, ok, err := s.lookupLinkLocked(iss, sub); err != nil {
-			return err
-		} else if ok {
-			sess.PAMUser = pam
+	sess.ID = id
+	sess.Expires = time.Now().Add(ttl)
+	if err := s.withLock(func() error {
+		if prep != nil {
+			if err := prep(); err != nil {
+				return err
+			}
 		}
 		return s.saveSession(sess)
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	return sess, nil
@@ -439,26 +456,11 @@ func (s *Store) clearMatchingSessionsLocked(match func(*Session) bool) (int, err
 }
 
 func (s *Store) readLinks() (*linkFile, error) {
-	b, err := os.ReadFile(s.linksPath())
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return &linkFile{}, nil
-		}
-		return nil, err
-	}
-	var lf linkFile
-	if err := json.Unmarshal(b, &lf); err != nil {
-		return nil, err
-	}
-	return &lf, nil
+	return readJSON[linkFile](s.linksPath())
 }
 
 func (s *Store) writeLinks(lf *linkFile) error {
-	b, err := json.MarshalIndent(lf, "", "  ")
-	if err != nil {
-		return err
-	}
-	return s.writeStateFile(s.linksPath(), b)
+	return s.writeJSON(s.linksPath(), lf)
 }
 
 func (s *Store) writeStateFile(path string, b []byte) error {
@@ -553,26 +555,34 @@ func (s *Store) BindSubject(email, iss, sub string) error {
 }
 
 func (s *Store) readSubjects() (*subjectFile, error) {
-	b, err := os.ReadFile(s.subjectsPath())
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return &subjectFile{}, nil
-		}
-		return nil, err
-	}
-	var sf subjectFile
-	if err := json.Unmarshal(b, &sf); err != nil {
-		return nil, err
-	}
-	return &sf, nil
+	return readJSON[subjectFile](s.subjectsPath())
 }
 
 func (s *Store) writeSubjects(sf *subjectFile) error {
-	b, err := json.MarshalIndent(sf, "", "  ")
+	return s.writeJSON(s.subjectsPath(), sf)
+}
+
+func readJSON[T any](path string) (*T, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return new(T), nil
+		}
+		return nil, err
+	}
+	var v T
+	if err := json.Unmarshal(b, &v); err != nil {
+		return nil, err
+	}
+	return &v, nil
+}
+
+func (s *Store) writeJSON(path string, v any) error {
+	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
-	return s.writeStateFile(s.subjectsPath(), b)
+	return s.writeStateFile(path, b)
 }
 
 func randomID() (string, error) {

@@ -40,20 +40,28 @@ const oauthMaxTx = 1024
 type oauthTx struct {
 	nonce    string
 	verifier string
+	provider string
 	exp      time.Time
 }
 
-// IDP is the OIDC authorization-code provider (currently Google).
+// IDP is one authorization-code identity provider.
 type IDP interface {
 	AuthCodeURL(ctx context.Context, state, nonce, redirectURL string) (authURL, verifier string, err error)
 	Exchange(ctx context.Context, code, nonce, redirectURL, verifier string) (*oidcgoogle.Identity, error)
+}
+
+// Identity is a named sign-in provider. Name matches an IDP= value.
+type Identity struct {
+	Name  string
+	Label string
+	IDP   IDP
 }
 
 // Server is the HTTP handler plus listener manager.
 type Server struct {
 	cfg         atomic.Value // *config.Config
 	store       *store.Store
-	idp         IDP
+	ids         []Identity
 	pam         pamauth.Authenticator
 	cert        atomic.Value // *tls.Certificate
 	manager     *bind.Manager
@@ -90,14 +98,14 @@ type ovpnTicket struct {
 }
 
 // New constructs a server. cfg must already be Ready() for production start.
-func New(cfg *config.Config, st *store.Store, idp IDP, pam pamauth.Authenticator, key []byte) (*Server, error) {
+// ids is every implemented provider; config chooses which are active.
+func New(cfg *config.Config, st *store.Store, ids []Identity, pam pamauth.Authenticator, key []byte) (*Server, error) {
 	if err := ensureLayout(cfg.Data); err != nil {
 		return nil, err
 	}
-	s := &Server{store: st, idp: idp, pam: pam, key: key}
-	s.cfg.Store(cfg)
+	s := &Server{store: st, ids: ids, pam: pam, key: key}
+	s.SetConfig(cfg)
 	s.manager = bind.NewManager(s, cfg.UnixGroup, s.certificate)
-	s.fixCubbies()
 	return s, nil
 }
 
@@ -114,9 +122,21 @@ func (s *Server) certificate() (*tls.Certificate, error) {
 	return c, nil
 }
 
+type clientSetter interface {
+	SetClient(id, secret string)
+}
+
 // SetConfig replaces the runtime config (SIGHUP after a successful parse).
 func (s *Server) SetConfig(cfg *config.Config) {
 	s.cfg.Store(cfg)
+	for _, id := range s.ids {
+		if id.Name != config.ProviderGoogle {
+			continue
+		}
+		if g, ok := id.IDP.(clientSetter); ok {
+			g.SetClient(cfg.GoogleClientID, cfg.GoogleClientSecret)
+		}
+	}
 	s.fixCubbies()
 }
 
@@ -193,8 +213,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleLogin(w, r)
 	case r.URL.Path == "/oidc/callback":
 		s.handleCallback(w, r)
-	case r.URL.Path == "/link":
-		s.handleLink(w, r)
 	case r.URL.Path == "/logout":
 		s.handleLogout(w, r)
 	case strings.HasPrefix(r.URL.Path, "/home"):
@@ -263,13 +281,7 @@ func (s *Server) handleOpenVPNProfile(w http.ResponseWriter, r *http.Request) {
 	if loc == "/login" {
 		log.Printf("openvpn GET %s pam=%s from %s ua=%q accept=%q: login", r.URL.RequestURI(), pam, r.RemoteAddr, r.UserAgent(), r.Header.Get("Accept"))
 		s.setOvpnImport(w)
-		s.render(w, "login", pageData{Title: "Sign in"})
-		return
-	}
-	if loc == "/link" {
-		log.Printf("openvpn GET %s pam=%s from %s ua=%q: redirect /link", r.URL.RequestURI(), pam, r.RemoteAddr, r.UserAgent())
-		s.setOvpnImport(w)
-		http.Redirect(w, r, loc, http.StatusFound)
+		s.render(w, "login", s.loginPage(sess))
 		return
 	}
 	s.clearOvpnImport(w)
@@ -307,14 +319,10 @@ func (s *Server) maybeOvpnWebAuth(w http.ResponseWriter) {
 }
 
 func (s *Server) entryPath(r *http.Request) string {
-	sess := s.session(r)
-	if sess == nil {
-		return "/login"
+	if s.sessionHasCubby(s.session(r)) {
+		return "/home/"
 	}
-	if !s.sessionHasCubby(sess) {
-		return "/link"
-	}
-	return "/home/"
+	return "/login"
 }
 
 func (s *Server) session(r *http.Request) *store.Session {
@@ -368,7 +376,7 @@ func (s *Server) afterLogin(r *http.Request, linked bool) string {
 	want := err == nil && c.Value == "1"
 	dest := "/home/"
 	if !linked {
-		dest = "/link"
+		dest = "/login"
 	} else if want {
 		dest = "/openvpn-api/profile"
 	}
@@ -530,7 +538,29 @@ func (s *Server) lookupOvpnTicket(id string, consume bool) (ovpnTicket, bool) {
 	return t, true
 }
 
-func (s *Server) putOauthTx(id, nonce, verifier string, exp time.Time) error {
+func (s *Server) activeIDP(name string) (IDP, bool) {
+	id, ok := s.registered(name)
+	if !ok {
+		return nil, false
+	}
+	for _, want := range s.config().Providers() {
+		if want == name {
+			return id.IDP, true
+		}
+	}
+	return nil, false
+}
+
+func (s *Server) registered(name string) (Identity, bool) {
+	for _, id := range s.ids {
+		if id.Name == name && id.IDP != nil {
+			return id, true
+		}
+	}
+	return Identity{}, false
+}
+
+func (s *Server) putOauthTx(id, provider, nonce, verifier string, exp time.Time) error {
 	s.oauthMu.Lock()
 	defer s.oauthMu.Unlock()
 	if s.oauthTx == nil {
@@ -545,22 +575,22 @@ func (s *Server) putOauthTx(id, nonce, verifier string, exp time.Time) error {
 	if _, ok := s.oauthTx[id]; !ok && len(s.oauthTx) >= oauthMaxTx {
 		return fmt.Errorf("oauth tx full")
 	}
-	s.oauthTx[id] = oauthTx{nonce: nonce, verifier: verifier, exp: exp}
+	s.oauthTx[id] = oauthTx{nonce: nonce, verifier: verifier, provider: provider, exp: exp}
 	return nil
 }
 
-func (s *Server) takeOauthTx(id string) (nonce, verifier string, err error) {
+func (s *Server) takeOauthTx(id string) (nonce, provider, verifier string, err error) {
 	s.oauthMu.Lock()
 	defer s.oauthMu.Unlock()
 	tx, ok := s.oauthTx[id]
 	if !ok {
-		return "", "", fmt.Errorf("no oauth tx")
+		return "", "", "", fmt.Errorf("no oauth tx")
 	}
 	delete(s.oauthTx, id)
 	if time.Now().After(tx.exp) {
-		return "", "", fmt.Errorf("oauth tx expired")
+		return "", "", "", fmt.Errorf("oauth tx expired")
 	}
-	return tx.nonce, tx.verifier, nil
+	return tx.nonce, tx.provider, tx.verifier, nil
 }
 
 func (s *Server) redirectURI() string {

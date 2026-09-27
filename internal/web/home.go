@@ -39,7 +39,7 @@ func validCubbyID(id string) bool {
 // gateIdentity decides whether this OIDC identity may receive a session.
 // A non-empty allowlist requires a verified listed address and pins
 // (issuer, sub) for that address. An empty list does not pin. With
-// REQUIRE_PAM_LINK=0 an unlinked session still needs a verified email,
+// PAM=no an unlinked session still needs a verified email,
 // because the cubby id is the email hash.
 func (s *Server) gateIdentity(id *oidcgoogle.Identity) error {
 	if id == nil {
@@ -59,7 +59,7 @@ func (s *Server) gateIdentity(id *oidcgoogle.Identity) error {
 		}
 		return nil
 	}
-	if cfg.RequirePAMLink {
+	if cfg.PAM {
 		return nil
 	}
 	pam, ok, err := s.store.LookupLink(id.Issuer, id.Subject)
@@ -76,7 +76,7 @@ func (s *Server) gateIdentity(id *oidcgoogle.Identity) error {
 }
 
 // sessionHasCubby is true when this session may open /home.
-// A PAM link uses users/<pam>. Otherwise REQUIRE_PAM_LINK=0 uses the
+// A PAM user uses users/<pam>. Otherwise PAM=no uses the
 // session's own email hash.
 func (s *Server) sessionHasCubby(sess *store.Session) bool {
 	if sess == nil {
@@ -92,7 +92,7 @@ func (s *Server) sessionHasCubby(sess *store.Session) bool {
 // emailHomeID is the cubby directory name for an unlinked session when
 // PAM link is not required. A non-empty allowlist is checked again here.
 func (s *Server) emailHomeID(sess *store.Session) (string, bool) {
-	if sess == nil || sess.PAMUser != "" || s.config().RequirePAMLink {
+	if sess == nil || sess.PAMUser != "" || s.config().PAM {
 		return "", false
 	}
 	id, err := config.EmailCubbyID(sess.Email)
@@ -137,7 +137,7 @@ func (s *Server) fixEmailCubbies() {
 		if !e.IsDir() || !validCubbyID(e.Name()) {
 			continue
 		}
-		s.fixExistingCubby(home, e.Name())
+		s.prepareExistingCubby(home, e.Name(), "")
 	}
 }
 
@@ -201,25 +201,4 @@ func (s *Server) prepareExistingCubby(parent, name, rel string) {
 	}
 	s.fixCubbyDirChildren(fd, acc, parent, gid)
 	unix.Close(fd)
-}
-
-func (s *Server) fixExistingCubby(parent, name string) {
-	rel := name
-	if !filepath.IsLocal(rel) {
-		return
-	}
-	gid := s.unixGid()
-	parentfd, err := openDir(parent)
-	if err != nil {
-		return
-	}
-	defer unix.Close(parentfd)
-	fd, err := unix.Openat(parentfd, rel, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-	if err != nil {
-		return
-	}
-	defer unix.Close(fd)
-	cubby := filepath.Join(parent, rel)
-	s.fixCubbyFD(fd, cubby, parent, gid)
-	s.fixCubbyDirChildren(fd, cubby, parent, gid)
 }
