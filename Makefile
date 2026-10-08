@@ -5,7 +5,7 @@
 
 BINDIR := bin
 GIT_VERSION := $(shell git describe --tags --abbrev=4 --dirty --always 2>/dev/null || echo unknown)
-LDFLAGS := -X github.com/nyet/bootstash/internal/version.Version=$(GIT_VERSION)
+LDFLAGS := -X go.nyet.org/bootstash/internal/version.Version=$(GIT_VERSION)
 # -d: Build-Depends name a Debian golang-go; PATH go (setup-go / local) is enough.
 # dpkg default is .. ; make packages / CI use packages/. Bare dpkg-buildpackage still uses ...
 # Only these two: empty or / would make mkdir/mv target the root.

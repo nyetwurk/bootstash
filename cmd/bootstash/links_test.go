@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nyet/bootstash/internal/store"
+	"go.nyet.org/bootstash/internal/store"
 )
 
 func TestListLinksPrintsPAMIssuerSub(t *testing.T) {

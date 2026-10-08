@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/nyet/bootstash/internal/bind"
+	"go.nyet.org/bootstash/internal/bind"
 )
 
 // defaultCertRoot is where the Let's Encrypt deploy hook copies PEMs.

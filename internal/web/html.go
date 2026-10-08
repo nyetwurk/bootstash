@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nyet/bootstash/internal/store"
+	"go.nyet.org/bootstash/internal/store"
 )
 
 //go:embed templates/*

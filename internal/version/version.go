@@ -5,6 +5,6 @@
 package version
 
 // Version is set at link time with
-// -X github.com/nyet/bootstash/internal/version.Version=$(git describe ...).
+// -X go.nyet.org/bootstash/internal/version.Version=$(git describe ...).
 // The default is used for go test / go run without linker flags.
 var Version = "unknown"

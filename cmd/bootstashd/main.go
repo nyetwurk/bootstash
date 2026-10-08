@@ -13,14 +13,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nyet/bootstash/internal/bind"
-	"github.com/nyet/bootstash/internal/config"
-	"github.com/nyet/bootstash/internal/configcheck"
-	"github.com/nyet/bootstash/internal/oidcgoogle"
-	"github.com/nyet/bootstash/internal/pamauth"
-	"github.com/nyet/bootstash/internal/store"
-	"github.com/nyet/bootstash/internal/version"
-	"github.com/nyet/bootstash/internal/web"
+	"go.nyet.org/bootstash/internal/bind"
+	"go.nyet.org/bootstash/internal/config"
+	"go.nyet.org/bootstash/internal/configcheck"
+	"go.nyet.org/bootstash/internal/oidcgoogle"
+	"go.nyet.org/bootstash/internal/pamauth"
+	"go.nyet.org/bootstash/internal/store"
+	"go.nyet.org/bootstash/internal/version"
+	"go.nyet.org/bootstash/internal/web"
 )
 
 func main() {

@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/nyet/bootstash/internal/config"
-	"github.com/nyet/bootstash/internal/osutil"
-	"github.com/nyet/bootstash/internal/pamauth"
+	"go.nyet.org/bootstash/internal/config"
+	"go.nyet.org/bootstash/internal/osutil"
+	"go.nyet.org/bootstash/internal/pamauth"
 )
 
 func TestMkdirRefusesNonRootAndPAMOff(t *testing.T) {

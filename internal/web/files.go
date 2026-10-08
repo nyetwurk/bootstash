@@ -21,9 +21,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nyet/bootstash/internal/jail"
-	"github.com/nyet/bootstash/internal/pamauth"
-	"github.com/nyet/bootstash/internal/store"
+	"go.nyet.org/bootstash/internal/jail"
+	"go.nyet.org/bootstash/internal/pamauth"
+	"go.nyet.org/bootstash/internal/store"
 )
 
 func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {

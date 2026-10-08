@@ -11,10 +11,10 @@ import (
 	"log/syslog"
 	"os"
 
-	"github.com/nyet/bootstash/internal/config"
-	"github.com/nyet/bootstash/internal/configcheck"
-	"github.com/nyet/bootstash/internal/store"
-	"github.com/nyet/bootstash/internal/version"
+	"go.nyet.org/bootstash/internal/config"
+	"go.nyet.org/bootstash/internal/configcheck"
+	"go.nyet.org/bootstash/internal/store"
+	"go.nyet.org/bootstash/internal/version"
 )
 
 func main() {

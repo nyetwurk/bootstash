@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nyet/bootstash/internal/osutil"
+	"go.nyet.org/bootstash/internal/osutil"
 )
 
 func TestSessionAndLink(t *testing.T) {

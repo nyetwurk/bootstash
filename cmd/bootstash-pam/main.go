@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/nyet/bootstash/internal/pamauth"
+	"go.nyet.org/bootstash/internal/pamauth"
 )
 
 func main() {

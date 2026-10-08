@@ -1,7 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: bootstash
 Upstream-Contact: nyet <nyet@nyet.org>
-Source: https://github.com/nyet/bootstash
+Source: https://git.nyet.org/bootstash
 Comment: This package does not vendor Go modules. `make copyright`
  refreshes the module list below. A Debian ftp-master upload can map
  them to golang-*-dev Build-Depends later.

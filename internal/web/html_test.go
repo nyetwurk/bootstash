@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nyet/bootstash/internal/jail"
+	"go.nyet.org/bootstash/internal/jail"
 )
 
 func TestFormatSize(t *testing.T) {

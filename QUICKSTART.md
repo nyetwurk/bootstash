@@ -2,7 +2,7 @@
 
 This installs the cubby. To create the OpenVPN VPS it serves profiles
 from, use
-[openvpn-deploy](https://github.com/nyetwurk/openvpn-deploy)
+[openvpn-deploy](https://git.nyet.org/openvpn-deploy)
 (DigitalOcean, Google Compute Engine, AWS, or a local VM).
 
 ## First run
@@ -240,7 +240,7 @@ Configure does not enable the unit.
 
 ## See also
 
-- OpenVPN VPS: [openvpn-deploy](https://github.com/nyetwurk/openvpn-deploy)
+- OpenVPN VPS: [openvpn-deploy](https://git.nyet.org/openvpn-deploy)
 - Google sign-in errors: [`README.md`](README.md#oidc-troubleshooting)
 - OpenVPN Connect: [`OPENVPN.md`](OPENVPN.md)
 - Changing the code: [`DEVELOPERS.md`](DEVELOPERS.md)

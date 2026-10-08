@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nyet/bootstash/internal/osutil"
+	"go.nyet.org/bootstash/internal/osutil"
 )
 
 func TestRejectDotDot(t *testing.T) {

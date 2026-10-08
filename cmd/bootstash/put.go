@@ -16,10 +16,10 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/nyet/bootstash/internal/config"
-	"github.com/nyet/bootstash/internal/jail"
-	"github.com/nyet/bootstash/internal/osutil"
-	"github.com/nyet/bootstash/internal/pamauth"
+	"go.nyet.org/bootstash/internal/config"
+	"go.nyet.org/bootstash/internal/jail"
+	"go.nyet.org/bootstash/internal/osutil"
+	"go.nyet.org/bootstash/internal/pamauth"
 )
 
 const (

@@ -1,4 +1,4 @@
-module github.com/nyet/bootstash
+module go.nyet.org/bootstash
 
 go 1.27
 

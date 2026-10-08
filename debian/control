@@ -8,9 +8,9 @@ Build-Depends:
  libpam0g-dev,
  python3
 Standards-Version: 4.7.2
-Homepage: https://github.com/nyet/bootstash
-Vcs-Git: https://github.com/nyet/bootstash.git
-Vcs-Browser: https://github.com/nyet/bootstash
+Homepage: https://git.nyet.org/bootstash
+Vcs-Git: https://git.nyet.org/bootstash.git
+Vcs-Browser: https://git.nyet.org/bootstash
 Rules-Requires-Root: no
 
 Package: bootstash

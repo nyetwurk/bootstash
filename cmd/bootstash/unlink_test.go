@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nyet/bootstash/internal/store"
+	"go.nyet.org/bootstash/internal/store"
 )
 
 func TestRunUnlinkDropsPAMMap(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/nyet/bootstash/internal/pamauth"
+	"go.nyet.org/bootstash/internal/pamauth"
 )
 
 func runUnlink(args []string) int {

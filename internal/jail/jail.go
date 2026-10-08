@@ -15,7 +15,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/nyet/bootstash/internal/osutil"
+	"go.nyet.org/bootstash/internal/osutil"
 	"golang.org/x/sys/unix"
 )
 

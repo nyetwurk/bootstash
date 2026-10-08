@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/nyet/bootstash/internal/bind"
-	"github.com/nyet/bootstash/internal/config"
+	"go.nyet.org/bootstash/internal/bind"
+	"go.nyet.org/bootstash/internal/config"
 )
 
 // Check loads config, requires Ready keys, parses every LISTEN spec, and

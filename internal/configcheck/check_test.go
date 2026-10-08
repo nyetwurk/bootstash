@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nyet/bootstash/internal/config"
+	"go.nyet.org/bootstash/internal/config"
 )
 
 func TestCheckReadyAndListen(t *testing.T) {
