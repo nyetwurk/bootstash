@@ -260,13 +260,16 @@ With
 .B PAM=no
 .B \-email
 .I addr
-selects one
-.B ALLOWED_EMAILS
-address and this command creates
+selects the cubby and this command creates
 .RI $DATA/home/<id>/
 if it is missing
 .RB ( 2770 ,
 owned by the caller).
+When
+.B ALLOWED_EMAILS
+is empty, any address is accepted and that directory is what lets
+the address sign in.
+When the list is set, the address must be on it.
 Omit
 .B \-email
 only when that list has a single address.
@@ -377,9 +380,11 @@ Verified address for
 .B put
 when
 .B PAM=no .
-Required when
+When
 .B ALLOWED_EMAILS
-has more than one address.
+is empty, any address is accepted and creates the cubby that lets
+that address sign in.
+Required when the list has more than one address.
 Omit it when that list has a single address.
 .TP
 .BI \-t " dir"

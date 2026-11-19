@@ -154,6 +154,41 @@ func TestCallbackEmptyListStillLinks(t *testing.T) {
 	}
 }
 
+func TestCallbackEmptyListRequiresCubby(t *testing.T) {
+	dir := t.TempDir()
+	seq := &seqIDP{ids: []oidcgoogle.Identity{
+		emailIdentity("bob@gmail.com", "sub-b", true),
+		emailIdentity("bob@gmail.com", "sub-b", true),
+		emailIdentity("bob@gmail.com", "sub-other", true),
+	}}
+	s := newScriptServer(t, dir, seq, nil, false)
+	state, tx := googleLogin(t, s)
+	rr := do(s, oauthCallback(state, tx))
+	if rr.Code != http.StatusForbidden || cookieNamed(rr, s.cookieName()) != nil {
+		t.Fatalf("no cubby: %d cookie %v", rr.Code, cookieNamed(rr, s.cookieName()))
+	}
+	id, err := config.EmailCubbyID("bob@gmail.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "home", id), 0770); err != nil {
+		t.Fatal(err)
+	}
+	state, tx = googleLogin(t, s)
+	rr = do(s, oauthCallback(state, tx))
+	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/home/" {
+		t.Fatalf("enrolled: %d %s", rr.Code, rr.Header().Get("Location"))
+	}
+	if cookieNamed(rr, s.cookieName()) == nil {
+		t.Fatal("enrolled cookie")
+	}
+	state, tx = googleLogin(t, s)
+	rr = do(s, oauthCallback(state, tx))
+	if rr.Code != http.StatusForbidden || cookieNamed(rr, s.cookieName()) != nil {
+		t.Fatalf("other sub: %d", rr.Code)
+	}
+}
+
 func TestTwoEmailCubbies(t *testing.T) {
 	dir := t.TempDir()
 	seq := &seqIDP{ids: []oidcgoogle.Identity{

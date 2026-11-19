@@ -171,7 +171,7 @@ func pickPutEmail(cfg *config.Config, emailFlag string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("email: %w", err)
 		}
-		if len(cfg.AllowedEmails) == 0 || !cfg.AllowsEmail(n) {
+		if len(cfg.AllowedEmails) > 0 && !cfg.AllowsEmail(n) {
 			return "", fmt.Errorf("email %s is not in ALLOWED_EMAILS", n)
 		}
 		return n, nil

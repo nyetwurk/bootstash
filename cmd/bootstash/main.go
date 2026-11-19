@@ -55,36 +55,9 @@ func main() {
 }
 
 func runCheck(args []string) int {
-	defaults := config.DefaultDistPath
-	cfgFile := config.DefaultConfigPath
-	secretsFile := config.DefaultSecretsPath
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "-defaults":
-			i++
-			if i >= len(args) {
-				fmt.Fprintln(os.Stderr, "-defaults requires a path")
-				return 2
-			}
-			defaults = args[i]
-		case "-config":
-			i++
-			if i >= len(args) {
-				fmt.Fprintln(os.Stderr, "-config requires a path")
-				return 2
-			}
-			cfgFile = args[i]
-		case "-secrets":
-			i++
-			if i >= len(args) {
-				fmt.Fprintln(os.Stderr, "-secrets requires a path")
-				return 2
-			}
-			secretsFile = args[i]
-		default:
-			fmt.Fprintf(os.Stderr, "bootstash check-config: unknown argument %q\n", args[i])
-			return 2
-		}
+	defaults, cfgFile, secretsFile, code, ok := configPaths("check-config", args)
+	if !ok {
+		return code
 	}
 	cfg, err := configcheck.Check(defaults, cfgFile, secretsFile)
 	if err != nil {
@@ -103,6 +76,20 @@ func stateFlags(fs *flag.FlagSet) (defaults, cfgFile, secrets *string) {
 	cfgFile = fs.String("config", config.DefaultConfigPath, "operator config (read DATA)")
 	secrets = fs.String("secrets", config.DefaultSecretsPath, "OIDC client secrets")
 	return
+}
+
+func configPaths(name string, args []string) (defaults, cfgFile, secrets string, code int, ok bool) {
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	d, c, s := stateFlags(fs)
+	if err := fs.Parse(args); err != nil {
+		return "", "", "", 2, false
+	}
+	if fs.NArg() != 0 {
+		fmt.Fprintf(os.Stderr, "bootstash %s: unknown argument %q\n", name, fs.Arg(0))
+		return "", "", "", 2, false
+	}
+	return *d, *c, *s, 0, true
 }
 
 func openState(defaults, cfgFile, secrets string) (*store.Store, error) {

@@ -373,7 +373,20 @@ Repeatable verified-address allowlist (comma- or space-separated on
 each line). If the operator file mentions the key, those lines
 replace the packaged list, and every line counts. Addresses are
 trimmed and lowercased. Gmail dots and plus-tags are not folded.
-Empty or unset: whoever the Google client admits. If any address is
+Empty or unset and
+.BR PAM=yes :
+whoever the Google client admits, then the Unix password when that
+session is not already linked.
+Empty or unset and
+.BR PAM=no :
+a verified address may finish sign-in only when
+.RI home/<id>/
+already exists
+.RB ( bootstash
+.B put
+.B \-email
+creates it).
+If any address is
 set, only a verified listed address may finish sign-in. Others get
 a login error and do not reach the Unix password.
 The first success for an address stores
@@ -412,7 +425,9 @@ With
 .B no
 and an empty
 .BR ALLOWED_EMAILS ,
-check-config warns: any verified account gets a cubby.
+check-config warns: a verified address can sign in only when
+.RI home/<id>/
+already exists.
 .TP
 .B IDP
 Repeatable identity-provider name. If the operator file mentions the

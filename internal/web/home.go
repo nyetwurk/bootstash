@@ -38,26 +38,23 @@ func validCubbyID(id string) bool {
 
 // gateIdentity decides whether this OIDC identity may receive a session.
 // A non-empty allowlist requires a verified listed address and pins
-// (issuer, sub) for that address. An empty list does not pin. With
-// PAM=no an unlinked session still needs a verified email,
-// because the cubby id is the email hash.
+// (issuer, sub). PAM=yes with an empty list admits the provider login;
+// Unix link is still required before /home. PAM=no with an empty list
+// admits a verified address only when home/<id> already exists (put
+// -email creates it), then pins (issuer, sub) the same way. A subject
+// already linked to a Unix user is admitted without that directory.
 func (s *Server) gateIdentity(id *oidcgoogle.Identity) error {
 	if id == nil {
 		return errLoginDenied
 	}
 	cfg := s.config()
 	email, emailErr := config.NormalizeEmail(id.Email)
+	verified := id.EmailVerified && emailErr == nil
 	if len(cfg.AllowedEmails) > 0 {
-		if !id.EmailVerified || emailErr != nil || !cfg.AllowsEmail(email) {
+		if !verified || !cfg.AllowsEmail(email) {
 			return errLoginDenied
 		}
-		if err := s.store.BindSubject(email, id.Issuer, id.Subject); err != nil {
-			if errors.Is(err, store.ErrSubjectMismatch) {
-				return errLoginDenied
-			}
-			return err
-		}
-		return nil
+		return s.pinSubject(email, id)
 	}
 	if cfg.PAM {
 		return nil
@@ -69,8 +66,22 @@ func (s *Server) gateIdentity(id *oidcgoogle.Identity) error {
 	if ok && pam != "" {
 		return nil
 	}
-	if !id.EmailVerified || emailErr != nil {
+	if !verified {
 		return errLoginDenied
+	}
+	cubbyID, err := config.EmailCubbyID(email)
+	if err != nil || !s.emailCubbyOK(cubbyID) {
+		return errLoginDenied
+	}
+	return s.pinSubject(email, id)
+}
+
+func (s *Server) pinSubject(email string, id *oidcgoogle.Identity) error {
+	if err := s.store.BindSubject(email, id.Issuer, id.Subject); err != nil {
+		if errors.Is(err, store.ErrSubjectMismatch) {
+			return errLoginDenied
+		}
+		return err
 	}
 	return nil
 }

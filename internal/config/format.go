@@ -27,23 +27,11 @@ func (c *Config) Format() string {
 	}
 	kv(&b, "PUBLIC_URL", c.PublicURL)
 	kv(&b, "CERT_NAME", c.CertName)
-	if c.DisableTLS {
-		kv(&b, "TLS", "no")
-	} else {
-		kv(&b, "TLS", "auto")
-	}
+	kvOff(&b, "TLS", c.DisableTLS, "auto")
 	kv(&b, "TLS_CERT", c.TLSCert)
 	kv(&b, "TLS_KEY", c.TLSKey)
-	if c.DisableOvpnToken {
-		kv(&b, "OVPN_TOKEN", "no")
-	} else {
-		kv(&b, "OVPN_TOKEN", "auto")
-	}
-	if c.PAM {
-		kv(&b, "PAM", "yes")
-	} else {
-		kv(&b, "PAM", "no")
-	}
+	kvOff(&b, "OVPN_TOKEN", c.DisableOvpnToken, "auto")
+	kvOff(&b, "PAM", !c.PAM, "yes")
 	kv(&b, "PAM_SERVICE", c.PAMService)
 	kv(&b, "UNIX_GROUP", c.UnixGroup)
 	if c.MaxUpload > 0 {
@@ -72,4 +60,12 @@ func kv(b *strings.Builder, key, val string) {
 		return
 	}
 	fmt.Fprintf(b, "%s=%s\n", key, val)
+}
+
+func kvOff(b *strings.Builder, key string, off bool, on string) {
+	if off {
+		kv(b, key, "no")
+		return
+	}
+	kv(b, key, on)
 }

@@ -169,7 +169,10 @@ will send). Reload after changing `PUBLIC_URL` or installing
   with an existing Linux user (not root) when `PAM=yes`. `PAM=no` uses
   the email cubby and does not ask for a Unix password. With no provider,
   `/login` is that Unix password and there is no map row
-- `ALLOWED_EMAILS` empty: whoever the Google client admits. If any
+- `ALLOWED_EMAILS` empty and `PAM=yes`: whoever the Google client
+  admits, then the Unix password unless that subject is already
+  linked. Empty and `PAM=no`: a verified address can sign in only
+  after `bootstash put -email` has created that cubby. If any
   address is set, an unlisted or unverified account is rejected at
   auth and does not reach the Unix password
 - Changing or disabling the Unix account does not drop the map;

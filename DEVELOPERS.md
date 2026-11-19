@@ -37,10 +37,12 @@ README “Expectations.”
   `$DATA/home/<id>/` for a provider session and does not ask for a
   Unix password; at least one provider is required. `id` is lowercase
   hex SHA-256 of the trimmed, lowercased verified email (not the
-  address, not `issuer||sub`). `ALLOWED_EMAILS` is repeatable; empty
-  admits whoever the provider admits. Each listed address pins
-  `(issuer, sub)` on first login in `state/subjects.json`. Two
-  addresses are two cubbies. Do not `useradd`. Do not grow a
+  address, not `issuer||sub`). `ALLOWED_EMAILS` is repeatable. Empty
+  with `PAM=yes` admits whoever the provider admits. Empty with
+  `PAM=no` admits a verified address only when `home/<id>` already
+  exists (`put -email` creates it) and pins `(issuer, sub)` on first
+  login in `state/subjects.json`. Each listed address pins the same
+  way. Two addresses are two cubbies. Do not `useradd`. Do not grow a
   password/app-user table
 - Not ACME. Packaged `TLS=auto` (`maybe` is the same). Hook pick
   order, dest PEMs, and `PUBLIC_URL`: Config below. Do not read
@@ -329,9 +331,11 @@ Not sudo. UID 0 is refused. Does not read OIDC secrets. Files
 `0660` (HTTP upload), dirs `2770` (cubby). With
 `PAM=yes` the cubby is `users/<caller>/` and must
 already exist (login or `mkdir`). `put` does not create it.
-With `PAM=no`, `-email` selects one
-`ALLOWED_EMAILS` address (omit it only when the list has a single
-address) and `put` creates `home/<id>/` owned by the caller.
+With `PAM=no`, `-email` selects the cubby and `put` creates
+`home/<id>/` owned by the caller. When `ALLOWED_EMAILS` is empty,
+any address is accepted and that directory is what lets the address
+sign in. When the list is non-empty, the address must be on it
+(omit `-email` only when the list has a single address).
 `home/` must already exist (`03773`). Do not add the caller to
 group `bootstash`. Do not `chown` those files to `bootstash`.
 
@@ -341,8 +345,9 @@ Jail, Alice/Bob, CSRF, oversize, a session without a cubby cannot
 read trees, Range,
 bad PAM, UID 0, DELETE, cubby `0711`/`2770`/`0640`, `links` / `unlink` PAM map,
 `mkdir` (root, same directory as login, refuses UID 0 and `PAM=no`),
-`put` into the caller’s cubby and `put -email` into one address
-cubby, two simultaneous email cubbies, allowlist reject before
+`put` into the caller’s cubby, `put -email` into one listed address
+cubby, `put -email` with an empty allowlist, an empty list rejects
+OIDC until that directory exists, two simultaneous email cubbies, allowlist reject before
 `/login`, `POST /logout` keeps the map, PKCE,
 session rotate on `POST /login` after auth, a new map drops other sessions, oauth login
 cap, response headers, GET `/home` login redirect, HTML 404 / login-fail

@@ -64,9 +64,9 @@ func Summary(cfg *config.Config) string {
 }
 
 // Notice is a non-fatal operator warning. Empty when there is nothing
-// to say. PAM=no with an empty address list gives every verified
-// account from the identity provider its own cubby. ALLOWED_EMAILS
-// with no provider does nothing (no OIDC client).
+// to say. PAM=no with an empty address list admits a verified address
+// only when home/<id> already exists. ALLOWED_EMAILS with no provider
+// does nothing (no OIDC client).
 func Notice(cfg *config.Config) string {
 	if cfg == nil {
 		return ""
@@ -77,5 +77,5 @@ func Notice(cfg *config.Config) string {
 	if cfg.PAM || len(cfg.AllowedEmails) > 0 {
 		return ""
 	}
-	return "PAM=no and ALLOWED_EMAILS is empty: any verified account gets a cubby"
+	return "PAM=no and ALLOWED_EMAILS is empty: a verified address can sign in only when home/<id> already exists"
 }

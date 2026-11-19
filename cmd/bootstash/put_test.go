@@ -299,8 +299,8 @@ func setupPutTest(t *testing.T) (putUser, string, []string) {
 	return u, data, args
 }
 
-func TestPutEmailCubby(t *testing.T) {
-	u, data, cfgArgs := setupPutTest(t)
+func putEmailHome(t *testing.T, data string) string {
+	t.Helper()
 	home := filepath.Join(data, "home")
 	if err := os.MkdirAll(home, 0770); err != nil {
 		t.Fatal(err)
@@ -308,6 +308,12 @@ func TestPutEmailCubby(t *testing.T) {
 	if err := os.Chmod(home, os.ModeSetgid|os.ModeSticky|0773); err != nil {
 		t.Fatal(err)
 	}
+	return home
+}
+
+func TestPutEmailCubby(t *testing.T) {
+	u, data, cfgArgs := setupPutTest(t)
+	home := putEmailHome(t, data)
 	op := cfgArgs[3]
 	body := "DATA=" + data + "\nPAM=no\nALLOWED_EMAILS=Alice@Gmail.com\nALLOWED_EMAILS=bob@gmail.com\n"
 	if err := os.WriteFile(op, []byte(body), 0644); err != nil {
@@ -365,13 +371,7 @@ func TestPutEmailCubby(t *testing.T) {
 
 func TestPutEmailCubbySoleAddress(t *testing.T) {
 	u, data, cfgArgs := setupPutTest(t)
-	home := filepath.Join(data, "home")
-	if err := os.MkdirAll(home, 0770); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(home, os.ModeSetgid|os.ModeSticky|0773); err != nil {
-		t.Fatal(err)
-	}
+	home := putEmailHome(t, data)
 	op := cfgArgs[3]
 	if err := os.WriteFile(op, []byte("DATA="+data+"\nPAM=no\nALLOWED_EMAILS=only@gmail.com\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -384,6 +384,32 @@ func TestPutEmailCubbySoleAddress(t *testing.T) {
 		t.Fatal("sole address")
 	}
 	id, err := config.EmailCubbyID("only@gmail.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.ReadFile(filepath.Join(home, id, "a.txt")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPutEmailCubbyEmptyAllowlist(t *testing.T) {
+	u, data, cfgArgs := setupPutTest(t)
+	home := putEmailHome(t, data)
+	op := cfgArgs[3]
+	if err := os.WriteFile(op, []byte("DATA="+data+"\nPAM=no\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(t.TempDir(), "a.txt")
+	if err := os.WriteFile(src, []byte("a"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if code := putWith(u, ioDiscard(), append(cfgArgs, src)); code == 0 {
+		t.Fatal("empty allowlist without -email should fail")
+	}
+	if code := putWith(u, ioDiscard(), append(cfgArgs, "-email", "bob@gmail.com", src)); code != 0 {
+		t.Fatal("put -email with empty allowlist")
+	}
+	id, err := config.EmailCubbyID("bob@gmail.com")
 	if err != nil {
 		t.Fatal(err)
 	}
