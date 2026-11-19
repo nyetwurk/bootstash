@@ -393,7 +393,17 @@ The first success for an address stores
 .B (issuer, sub)
 in
 .IR $DATA/state/subjects.json .
-A later sign-in for that address must be the same subject.
+.B bootstash links
+prints that table after the Unix map.
+.B bootstash unlink
+does not drop it.
+Removing
+.RI home/<id>/
+locks that address out.
+A subject already in
+.I links.json
+is admitted without that directory.
+A later sign-in for a pinned address must be the same subject.
 SIGHUP re-reads the list. A session with no Unix user whose address was
 removed is cut off
 .BR /home/ .

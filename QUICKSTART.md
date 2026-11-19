@@ -164,10 +164,14 @@ hook does that when the service is active).
 
 ## Users and files
 
-To list the map: `sudo bootstash links` (PAM name, issuer, `sub`).
+To list the Unix map and the address pins: `sudo bootstash links`
+(`bootstash(8)`). `unlink` drops Unix rows only. Removing
+`home/<id>` locks an enrolled address out.
 To drop a user's Google-to-Linux map (they must log in again; the
 cubby stays): `sudo bootstash unlink alice`. Changing or disabling
-the Unix account does not drop the map.
+the Unix account does not drop the map. A subject already in the
+Unix map is still admitted when `PAM=no` and `ALLOWED_EMAILS` is
+empty, with no `home/<id>`.
 
 Root can create that cubby before the first login:
 

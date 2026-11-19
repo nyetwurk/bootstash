@@ -107,7 +107,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "  check-config       parse dist defaults, operator config, secrets, and LISTEN specs, then exit\n")
 	fmt.Fprintf(os.Stderr, "  config             print the merged config (no client secret, no crypto key)\n")
 	fmt.Fprintf(os.Stderr, "  provision-google   print Google OIDC recipe and install the downloaded client JSON\n")
-	fmt.Fprintf(os.Stderr, "  links              list OIDC→PAM maps (needs read of $DATA/state)\n")
+	fmt.Fprintf(os.Stderr, "  links              list Unix maps and address pins (needs read of $DATA/state)\n")
 	fmt.Fprintf(os.Stderr, "  unlink             drop OIDC→PAM links for a Unix user (needs write to $DATA/state)\n")
 	fmt.Fprintf(os.Stderr, "  mkdir              create users/<USER> (root; same directory login creates)\n")
 	fmt.Fprintf(os.Stderr, "  put                copy files into your cubby, or an allowlisted address cubby (not root)\n")

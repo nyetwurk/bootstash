@@ -179,15 +179,17 @@ the current project id is used for console links.
 It does not create Unix users.
 .TP
 .B links
-Print each OIDC→PAM map as
-.B user issuer sub
-(one row per subject).
+Print the Unix map and the address pins.
+Each row is
+.B user NAME issuer sub
+or
+.B email ADDRESS issuer sub\c
+\&.
 Needs read access to
 .I $DATA/state
 (usually
 .BR sudo ).
-Empty table: no rows, exit 0.
-Email is not a column.
+Empty tables: no rows, exit 0.
 .B ADMIN_USERS
 does not grant this.
 .TP
@@ -204,7 +206,8 @@ on those sessions.
 The next Google sign-in for those subjects must
 .B POST /login
 again.
-Does not delete the cubby.
+Does not delete the cubby or change
+.IR subjects.json .
 There is no HTTP
 .BR /unlink .
 .B ADMIN_USERS

@@ -175,8 +175,10 @@ will send). Reload after changing `PUBLIC_URL` or installing
   after `bootstash put -email` has created that cubby. If any
   address is set, an unlisted or unverified account is rejected at
   auth and does not reach the Unix password
-- Changing or disabling the Unix account does not drop the map;
-  `bootstash unlink` does
+- `bootstash links` lists the Unix map and the address pins.
+  `unlink` drops the Unix map only. Removing `home/<id>` locks an
+  enrolled address out. Changing or disabling the Unix account does
+  not drop the map
 - Extra DNS names are a second origin. HTTPS cookies are `__Host-`
   and do not follow Apache `ServerAlias`. A separate vhost should
   `Redirect` to `PUBLIC_URL` (see

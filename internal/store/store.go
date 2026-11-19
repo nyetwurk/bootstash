@@ -279,6 +279,20 @@ func (s *Store) ListLinks() ([]Link, error) {
 	return out, err
 }
 
+// ListSubjects returns address pins (email → issuer, sub).
+func (s *Store) ListSubjects() ([]Subject, error) {
+	var out []Subject
+	err := s.withLock(func() error {
+		sf, err := s.readSubjects()
+		if err != nil {
+			return err
+		}
+		out = append([]Subject(nil), sf.Subjects...)
+		return nil
+	})
+	return out, err
+}
+
 // LinkedPAMUsers returns distinct PAM names from the link table.
 func (s *Store) LinkedPAMUsers() ([]string, error) {
 	var out []string

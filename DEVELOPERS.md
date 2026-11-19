@@ -241,7 +241,7 @@ has a verified email also reaches `/home/` and the OpenVPN
 handoff for that email’s cubby. There is no Unix password step.
 With no provider, `/login` is the Unix password and the session
 is already `users/<name>/`.
-The map is listed with `bootstash links` and dropped with
+The Unix map is listed and dropped with `bootstash links` /
 `bootstash unlink USER` (operator access to `$DATA/state`), not HTTP.
 HTML **Sign out** is `POST /logout`: this session file and cookie only.
 The PAM map stays. Not unlink.
@@ -282,11 +282,14 @@ state. AuthCodeURL adds PKCE S256; the verifier is stored in that
 transaction. `/oidc/callback` requires the cookie, consumes the
 transaction, and sends the verifier on Exchange. A non-empty
 `ALLOWED_EMAILS` then requires `email_verified` and a listed
-address, and pins `(issuer, sub)` before any session cookie.
-Anyone else gets a login error and never the password form. Empty list:
-whoever the client admits, and no pin. Then `POST /login` when
-`PAM=yes`. With `PAM=no` the email cubby is the tree and there is
-no Unix password (an existing map row still uses `users/<pam>/`).
+address, and pins `(issuer, sub)` in `subjects.json` before any
+session cookie. Anyone else gets a login error and never the
+password form. Empty list and `PAM=yes`: whoever the client admits,
+and no pin, then `POST /login`. Empty list and `PAM=no`: a verified
+address only when `home/<id>` already exists, then the same pin. A
+subject already in `links.json` is admitted without that directory
+and is not pinned. With `PAM=no` there is no Unix password (an
+existing map row still uses `users/<pam>/`).
 `POST /login` after auth rotates the session id and cookie. Other
 sessions for that `(issuer, sub)` lose PAM when the mapping changes
 to a different Unix name. The daemon
@@ -312,9 +315,11 @@ UID 0 is never logged in (`POST /login` and the helper refuse it).
 installs the JSON (placement: Config). It does **not** create the
 Google web client (`gcloud` cannot) or Unix users.
 
-`bootstash links` prints `user issuer sub` (not email).
+`bootstash links` prints `user NAME issuer sub` from `links.json`, then
+`email ADDRESS issuer sub` from `subjects.json`.
 `bootstash unlink USER` drops every `(issuer, sub)` mapped to that
-PAM name and clears `pam_user` on those sessions. The cubby stays.
+PAM name and clears `pam_user` on those sessions. It does not change
+`subjects.json` or delete `home/<id>`. The cubby stays.
 Changing or disabling the Unix account does not drop the map.
 Not an `ADMIN_USERS` HTTP power.
 
