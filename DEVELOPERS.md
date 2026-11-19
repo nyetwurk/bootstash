@@ -69,6 +69,11 @@ applies to `ALLOWED_EMAILS`: every operator line counts, and a
 second line does not drop the first. Secrets **cannot**
 change `LISTEN` or `ALLOWED_EMAILS`. Do not invent a second set of scalar defaults in Go.
 
+`bootstash config` prints that merge to stdout (`KEY=value`,
+repeatable keys one per line). It does not require Ready. It does
+not print the Google client secret or `OIDC_CRYPTO`. An unreadable
+client JSON still prints the operator merge.
+
 `bootstash provision-google` installs the Google console’s Web
 application client JSON as `/etc/bootstash/oidc-google.json` (`0640`
 `root:bootstash`). It must not rewrite the operator file. It prints
@@ -347,5 +352,6 @@ unlink, no `Ovpn-WebAuth`, titled
 `remote [filename]`), picker HTML, `OVPN_TOKEN=no` / cubby
 `.bootstash-no-ovpn-token` (no mint, no probe WebAuth when operator
 off), `mime.types` parse,
+`bootstash config` (merged `PAM` / `ALLOWED_EMAILS`, omits the client secret),
 `scripts/test-letsencrypt-deploy.py` (pick order, `TLS=no` purge,
 renew of an already-installed dest).

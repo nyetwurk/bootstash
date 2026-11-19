@@ -9,6 +9,12 @@ bootstash \- CLI for bootstashd
 [\fB\-secrets\fR \fIpath\fR]
 .PP
 .B bootstash
+\fBconfig\fR
+[\fB\-defaults\fR \fIpath\fR]
+[\fB\-config\fR \fIpath\fR]
+[\fB\-secrets\fR \fIpath\fR]
+.PP
+.B bootstash
 \fBprovision-google\fR
 [\fB\-config\fR \fIpath\fR]
 [\fB\-secrets\fR \fIpath\fR]
@@ -50,6 +56,7 @@ bootstash \- CLI for bootstashd
 is the CLI for the bootstash daemon. It does not serve HTTP or
 call PAM.
 .B check-config ,
+.B config ,
 .B provision-google ,
 .B links ,
 .B unlink ,
@@ -76,6 +83,35 @@ spec, and TLS files when HTTPS is on (skipped if
 Exit 0 if the daemon could start (missing
 interfaces are not an error here). Same as
 .B bootstashd \-t .
+.TP
+.B config
+Print the merged configuration to stdout as
+.B KEY=value
+lines (the same syntax as
+.IR /etc/default/bootstash ).
+Built-in defaults, the dist file, then the operator file, then the
+client JSON.
+.BR LISTEN ,
+.BR ALLOWED_EMAILS ,
+and
+.B IDP
+are one line per value. Addresses are trimmed and lowercased.
+.B PAM
+is
+.B yes
+or
+.BR no .
+.B TLS
+and
+.B OVPN_TOKEN
+are
+.B no
+or
+.BR auto .
+Does not require the daemon to be ready to listen.
+Does not print the Google client secret or the OIDC crypto key.
+If the client JSON cannot be read, the operator merge is still
+printed and the read error goes to stderr.
 .TP
 .B provision-google
 Print a four-step Google console recipe (project, branding,
@@ -293,6 +329,7 @@ Dist defaults. Default:
 .IR /usr/lib/bootstash/default-dist .
 Used by
 .BR check-config ,
+.BR config ,
 .BR links ,
 .BR unlink ,
 .BR mkdir ,

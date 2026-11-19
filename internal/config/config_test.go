@@ -680,3 +680,41 @@ func TestSecretsCannotSetPAM(t *testing.T) {
 		t.Fatalf("providers %#v", cfg.Providers())
 	}
 }
+
+func TestFormatMergedOmitsSecrets(t *testing.T) {
+	dir := t.TempDir()
+	dist := filepath.Join(dir, "dist")
+	op := filepath.Join(dir, "op")
+	sec := filepath.Join(dir, "sec")
+	if err := os.WriteFile(dist, []byte("PAM=yes\nALLOWED_EMAILS=dist@gmail.com\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	body := "PAM=no\nALLOWED_EMAILS=Alice@Gmail.com, bob@gmail.com\nALLOWED_EMAILS=carol@gmail.com\nADMIN_USERS=alice\n"
+	if err := os.WriteFile(op, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sec, []byte("OIDC_GOOGLE_CLIENT_ID=cid\nOIDC_GOOGLE_CLIENT_SECRET=super\nOIDC_CRYPTO=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dist, op, sec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := cfg.Format()
+	for _, want := range []string{
+		"PAM=no\n",
+		"ALLOWED_EMAILS=alice@gmail.com\n",
+		"ALLOWED_EMAILS=bob@gmail.com\n",
+		"ALLOWED_EMAILS=carol@gmail.com\n",
+		"ADMIN_USERS=alice\n",
+		"OIDC_GOOGLE_CLIENT_ID=cid\n",
+		"IDP=google\n",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("missing %q in\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "dist@gmail.com") || strings.Contains(text, "super") || strings.Contains(text, "00112233") {
+		t.Fatalf("secret or dist address leaked\n%s", text)
+	}
+}

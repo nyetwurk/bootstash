@@ -131,7 +131,7 @@ also works. Modes and what not to `chown`:
 - Not a reason to auto-create Unix users
 
 Package: `bootstash`. Daemon: `bootstashd`. CLI: `bootstash`
-(`provision-google`, `links`, `unlink`, `put`).
+(`config`, `provision-google`, `links`, `unlink`, `put`).
 
 - Changing the code: [`DEVELOPERS.md`](DEVELOPERS.md)
 - Building: [`BUILDING.md`](BUILDING.md)
