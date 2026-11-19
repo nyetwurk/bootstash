@@ -177,14 +177,13 @@ sudo bootstash mkdir alice
 
 That is the same directory login creates (`2770` `alice:bootstash`).
 A second run succeeds when it is already owned by alice. With
-`PAM=no`, `put -email` creates the email cubby instead.
+`PAM=no`, `put -email` creates that address’s cubby instead
+(omit `-email` only when one address is listed).
 
 After that login, or after `mkdir`, that Unix user can put files
 into the cubby (not root).
 Every name on the command is a source. `-t` is the only directory
 inside the cubby.
-With `PAM=no`, `put` writes one allowlisted address’s
-cubby instead (`-email` when more than one address is listed).
 Do not add that user to group `bootstash`. Files stay owned by
 that Unix user:
 

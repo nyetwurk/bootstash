@@ -12,8 +12,8 @@ Bind wherever you want (loopback, LAN, a tunnel NIC, later a public
 address). Sign-in is a list of identity providers (Google today).
 PAM maps that auth onto a local Unix user's directory. With no
 provider configured, the packaged default is a Unix username and
-password. `PAM=no` with `ALLOWED_EMAILS` gives each verified address
-its own cubby and no Unix password. Another issuer is another
+password. `PAM=no` gives each verified address its own cubby and
+no Unix password. Another issuer is another
 provider, not a new session model.
 
 [openvpn-deploy](https://git.nyet.org/openvpn-deploy) creates
